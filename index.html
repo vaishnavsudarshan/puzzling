@@ -2,10 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>LingQuest</title>
+<title>PuzzLing</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
-/* LingQuest commits to a single light theme — same calm look on every device. */
+/* PuzzLing commits to a single light theme — same calm look on every device. */
 :root{
   --bg:#FBFAF8; --surface:#FFFFFF; --surface-2:#F4F3EF;
   --ink:#222630; --muted:#5F6572; --faint:#949aa4;
@@ -197,7 +197,7 @@ table.ptable td:first-child{font-family:var(--mono)}
 
 <header class="bar">
   <div class="bar-in">
-    <button class="brand" data-go="home" aria-label="LingQuest home">Ling<span class="q">Quest</span></button>
+    <button class="brand" data-go="home" aria-label="PuzzLing home">Puzz<span class="q">Ling</span></button>
     <nav class="nav" id="nav">
       <button data-go="home">Browse</button>
       <button data-go="board">Leaderboard</button>
@@ -219,7 +219,7 @@ table.ptable td:first-child{font-family:var(--mono)}
     <button class="btn primary" id="authGo">Log in</button>
     <div class="demo-note" id="authNote"></div>
     <div style="margin-top:14px;font-size:13.5px;color:var(--muted)">
-      <span id="authSwitchText">New to LingQuest?</span>
+      <span id="authSwitchText">New to PuzzLing?</span>
       <button class="link-btn" id="authSwitch" style="padding-left:4px">Create an account</button>
     </div>
   </div>
@@ -603,7 +603,7 @@ function setAuthMode(m){
   $('#authSub').textContent   = login?'Welcome back — enter your username and password.'
                                      :'Pick a username and password. This is how you’ll log back in.';
   $('#authGo').textContent    = login?'Log in':'Create account';
-  $('#authSwitchText').textContent = login?'New to LingQuest?':'Already have an account?';
+  $('#authSwitchText').textContent = login?'New to PuzzLing?':'Already have an account?';
   $('#authSwitch').textContent     = login?'Create an account':'Log in';
   $('#pass').setAttribute('autocomplete', login?'current-password':'new-password');
 }
