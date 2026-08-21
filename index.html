@@ -238,10 +238,12 @@ const sb = (window.supabase && SUPABASE_URL.indexOf("http")===0)
 /* ============ Puzzle content (maintained by the site owner) ============ */
 const TOPICS = [
   {id:'numbers', name:'Number systems', blurb:"Work out how a language counts — the logic is never quite English."},
-  {id:'sound',   name:'Sound patterns', blurb:"Find the hidden rule behind how words shift, change, and are said aloud."},
-  {id:'words',   name:'Word building',  blurb:"Break words into their pieces and rebuild new ones."},
-  {id:'order',   name:'Word order',     blurb:"Figure out who does what to whom when the order moves."},
-  {id:'meaning', name:'Words & meaning',blurb:"See how different languages carve up the world into words."},
+  {id:'sound',   name:'Sounds',         blurb:"Find the hidden rule behind how words shift, change, and are said aloud."},
+  {id:'words',   name:'Morphology',     blurb:"Break words into their pieces and rebuild new ones."},
+  {id:'order',   name:'Syntax',         blurb:"Figure out who does what to whom when the word order moves."},
+  {id:'meaning', name:'Semantics',      blurb:"See how different languages carve up the world into meaning."},
+  {id:'writing', name:'Writing',        blurb:"Crack scripts and symbols — the many ways languages are put on the page."},
+  {id:'ai',      name:'AI',             blurb:"Language through the eyes of a machine — how algorithms read, translate, and generate it."},
   {id:'misc',    name:'Misc',           blurb:"Odds and ends — ciphers, wordplay, and puzzles that fit nowhere else."},
 ];
 
@@ -353,10 +355,8 @@ function render(){
 function viewHome(){
   app.innerHTML=`
     <div class="h-hero">
-      <span class="eyebrow">Linguistics puzzles</span>
-      <h1>Figure out a language from scratch.</h1>
-      <p class="lede">No background needed — every puzzle hands you all the clues. Some are invented languages,
-        some are real, and some are just your own language seen fresh. Pick a topic and start deducing.</p>
+      <h1>Challenge yourself with these linguistics puzzles.</h1>
+      <p class="lede">No background needed — just logic. Pick a topic and have fun.</p>
     </div>
     <div class="grid">
       ${TOPICS.map(t=>{const n=count(t.id),s=solvedInTopic(t.id);
