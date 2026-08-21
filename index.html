@@ -211,22 +211,17 @@ table.ptable td:first-child{font-family:var(--mono)}
 <main id="app"></main>
 
 <div class="scrim" id="scrim">
-  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="mTitle">
-    <h2 id="mTitle">Sign in to LingQuest</h2>
-    <p>Enter your email and we'll send you a magic link — no password to remember.</p>
-    <input id="email" type="email" placeholder="you@example.com" autocomplete="email">
-    <button class="btn primary" id="sendLink">Send magic link</button>
-    <div class="demo-note" id="demoNote"></div>
-  </div>
-</div>
-
-<div class="scrim" id="unameScrim">
-  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="uTitle">
-    <h2 id="uTitle">Pick a display name</h2>
-    <p>This is the name that shows on the leaderboard. You can use letters, numbers, and underscores.</p>
-    <input id="uname" type="text" placeholder="e.g. schwa_lover" autocomplete="off" maxlength="24">
-    <button class="btn primary" id="saveName">Start playing</button>
-    <div class="demo-note" id="unameNote"></div>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+    <h2 id="authTitle">Log in</h2>
+    <p id="authSub">Welcome back — enter your username and password.</p>
+    <input id="uname" type="text" placeholder="username" autocomplete="username" maxlength="24" style="margin-bottom:10px">
+    <input id="pass" type="password" placeholder="password" autocomplete="current-password">
+    <button class="btn primary" id="authGo">Log in</button>
+    <div class="demo-note" id="authNote"></div>
+    <div style="margin-top:14px;font-size:13.5px;color:var(--muted)">
+      <span id="authSwitchText">New to LingQuest?</span>
+      <button class="link-btn" id="authSwitch" style="padding-left:4px">Create an account</button>
+    </div>
   </div>
 </div>
 
@@ -625,50 +620,72 @@ function finishItem(p,i,card,fb,btn,label){
   markComplete(p,card);
 }
 
-/* ============ auth ============ */
-const scrim=$('#scrim'), unameScrim=$('#unameScrim');
-function openSignin(){scrim.classList.add('on');$('#demoNote').textContent='';$('#email').focus()}
-function closeSignin(){scrim.classList.remove('on')}
-function openUsername(){unameScrim.classList.add('on');$('#unameNote').textContent='';$('#uname').focus()}
-function closeUsername(){unameScrim.classList.remove('on')}
+/* ============ auth (username + password via Supabase's secure auth) ============ */
+const AUTH_DOMAIN='lingquest.app';   // usernames map to synthetic emails; no real mail is ever sent
+const scrim=$('#scrim');
+let authMode='login';
+function emailFor(u){return u.trim().toLowerCase()+'@'+AUTH_DOMAIN;}
+function openSignin(){scrim.classList.add('on');$('#authNote').textContent='';$('#uname').focus();}
+function closeSignin(){scrim.classList.remove('on');}
+function setAuthMode(m){
+  authMode=m; $('#authNote').textContent='';
+  const login = m==='login';
+  $('#authTitle').textContent = login?'Log in':'Create your account';
+  $('#authSub').textContent   = login?'Welcome back — enter your username and password.'
+                                     :'Pick a username and password. This is how you’ll log back in.';
+  $('#authGo').textContent    = login?'Log in':'Create account';
+  $('#authSwitchText').textContent = login?'New to LingQuest?':'Already have an account?';
+  $('#authSwitch').textContent     = login?'Create an account':'Log in';
+  $('#pass').setAttribute('autocomplete', login?'current-password':'new-password');
+}
+$('#authSwitch').onclick=()=>setAuthMode(authMode==='login'?'signup':'login');
 
 document.body.addEventListener('click',e=>{
   if(e.target.matches('[data-signin]'))openSignin();
-  if(e.target.matches('[data-signout]')) signOut();
+  if(e.target.matches('[data-signout]'))signOut();
 });
-scrim.addEventListener('click',e=>{if(e.target===scrim)closeSignin()});
+scrim.addEventListener('click',e=>{if(e.target===scrim)closeSignin();});
 document.querySelector('.bar').addEventListener('click',e=>{
   const g=e.target.closest('[data-go]'); if(g)go(g.dataset.go);});
 
-$('#sendLink').onclick=async ()=>{
-  const email=$('#email').value.trim(); const note=$('#demoNote');
-  if(!/.+@.+\..+/.test(email)){note.textContent='Please enter a valid email.';return}
-  if(!sb){note.textContent='Sign-in is offline right now.';return}
-  $('#sendLink').disabled=true; note.textContent='Sending…';
-  const { error } = await sb.auth.signInWithOtp({ email, options:{ emailRedirectTo: location.origin+location.pathname }});
-  $('#sendLink').disabled=false;
-  note.innerHTML = error ? esc(error.message)
-    : `Magic link sent to <b>${esc(email)}</b>. Open it on this device to finish signing in.`;
-};
-$('#email').addEventListener('keydown',e=>{if(e.key==='Enter')$('#sendLink').click()});
+async function submitAuth(){
+  const u=$('#uname').value.trim(), p=$('#pass').value, note=$('#authNote');
+  if(!/^[A-Za-z0-9_]{2,24}$/.test(u)){note.textContent='Username: 2–24 letters, numbers, or underscores.';return;}
+  if(p.length<6){note.textContent='Password must be at least 6 characters.';return;}
+  if(!sb){note.textContent='Sign-in is offline right now.';return;}
+  $('#authGo').disabled=true;
+  const email=emailFor(u);
+  try{
+    if(authMode==='signup'){
+      note.textContent='Creating account…';
+      const { data, error } = await sb.auth.signUp({ email, password:p });
+      if(error){ note.textContent=/registered|already/i.test(error.message)
+          ?'That username is taken — try logging in instead.':error.message; return; }
+      if(data.session && data.user){
+        const { error:pe } = await sb.from('profiles').insert({ id:data.user.id, username:u });
+        if(pe && !/duplicate|unique/i.test(pe.message)) console.warn(pe.message);
+        await loadProgress(data.user, u);
+      }else{
+        note.textContent='Almost there — email confirmation is still switched on in Supabase. Turn it off (one toggle) and try again.';
+      }
+    }else{
+      note.textContent='Logging in…';
+      const { data, error } = await sb.auth.signInWithPassword({ email, password:p });
+      if(error){ note.textContent=/invalid|credential/i.test(error.message)
+          ?'Wrong username or password.':error.message; return; }
+      await onSignedIn(data.user);
+    }
+  }finally{ $('#authGo').disabled=false; }
+}
+$('#authGo').onclick=submitAuth;
+$('#uname').addEventListener('keydown',e=>{if(e.key==='Enter')$('#pass').focus();});
+$('#pass').addEventListener('keydown',e=>{if(e.key==='Enter')submitAuth();});
 
-$('#saveName').onclick=async ()=>{
-  const name=$('#uname').value.trim(); const note=$('#unameNote');
-  if(!/^[A-Za-z0-9_]{2,24}$/.test(name)){note.textContent='2–24 characters: letters, numbers, or underscores.';return}
-  if(!sb || !pendingAuthUser)return;
-  $('#saveName').disabled=true; note.textContent='Saving…';
-  const { error } = await sb.from('profiles').insert({ id:pendingAuthUser.id, username:name });
-  $('#saveName').disabled=false;
-  if(error){ note.textContent = /duplicate|unique/i.test(error.message) ? 'That name is taken — try another.' : error.message; return; }
-  await loadProgress(pendingAuthUser, name); pendingAuthUser=null;
-};
-$('#uname').addEventListener('keydown',e=>{if(e.key==='Enter')$('#saveName').click()});
-
-async function handleUser(au){
-  const { data: prof, error } = await sb.from('profiles').select('username').eq('id', au.id).maybeSingle();
-  if(error){ console.warn(error.message); return; }
-  if(!prof){ pendingAuthUser=au; openUsername(); return; }
-  await loadProgress(au, prof.username);
+async function onSignedIn(au){
+  let { data: prof } = await sb.from('profiles').select('username').eq('id', au.id).maybeSingle();
+  let username = prof ? prof.username : au.email.split('@')[0];
+  if(!prof){ await sb.from('profiles').insert({ id:au.id, username }); }
+  await loadProgress(au, username);
 }
 async function loadProgress(au, username){
   const { data: rows } = await sb.from('solves').select('puzzle_id,points').eq('user_id', au.id);
@@ -676,22 +693,21 @@ async function loadProgress(au, username){
   (rows||[]).forEach(r=>{ solved.add(r.puzzle_id); pts+=r.points;
     const p=PUZZLES.find(x=>x.id===r.puzzle_id); if(p) p.items.forEach((_,i)=>done.add(r.puzzle_id+'#'+i)); });
   user={ id:au.id, email:au.email, name:username, pts };
-  closeSignin(); closeUsername(); renderAuth(); render(); toast('Signed in');
+  closeSignin(); renderAuth(); render(); toast('Signed in');
 }
 async function signOut(){
   if(sb) await sb.auth.signOut();
-  user=null; solved.clear(); done.clear(); revealed.clear(); pendingAuthUser=null;
+  user=null; solved.clear(); done.clear(); revealed.clear();
   renderAuth(); render();
 }
-
 async function boot(){
-  render();
+  render(); setAuthMode('login');
   if(!sb) return;
   const { data:{ session } } = await sb.auth.getSession();
-  if(session && session.user) await handleUser(session.user);
+  if(session && session.user) await onSignedIn(session.user);
   sb.auth.onAuthStateChange((event, session)=>{
     if(event==='SIGNED_IN' && session && session.user){
-      if(!user || user.id!==session.user.id) handleUser(session.user);
+      if(!user || user.id!==session.user.id) onSignedIn(session.user);
     }else if(event==='SIGNED_OUT'){
       user=null; solved.clear(); done.clear(); revealed.clear(); renderAuth(); render();
     }
