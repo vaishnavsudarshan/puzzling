@@ -237,14 +237,14 @@ const sb = (window.supabase && SUPABASE_URL.indexOf("http")===0)
 
 /* ============ Puzzle content (maintained by the site owner) ============ */
 const TOPICS = [
-  {id:'numbers', name:'Number systems', blurb:"Work out how a language counts — the logic is never quite English."},
-  {id:'sound',   name:'Sounds',         blurb:"Find the hidden rule behind how words shift, change, and are said aloud."},
-  {id:'words',   name:'Morphology',     blurb:"Break words into their pieces and rebuild new ones."},
-  {id:'order',   name:'Syntax',         blurb:"Figure out who does what to whom when the word order moves."},
-  {id:'meaning', name:'Semantics',      blurb:"See how different languages carve up the world into meaning."},
-  {id:'writing', name:'Writing',        blurb:"Crack scripts and symbols — the many ways languages are put on the page."},
-  {id:'ai',      name:'AI',             blurb:"Language through the eyes of a machine — how algorithms read, translate, and generate it."},
-  {id:'misc',    name:'Misc',           blurb:"Odds and ends — ciphers, wordplay, and puzzles that fit nowhere else."},
+  {id:'numbers', name:'Number systems', blurb:"How languages count."},
+  {id:'sound',   name:'Sounds',         blurb:"The phonetics, phonology, and sound changes of language."},
+  {id:'words',   name:'Morphology',     blurb:"How words are put together."},
+  {id:'order',   name:'Syntax',         blurb:"How words are arranged."},
+  {id:'meaning', name:'Semantics',      blurb:"How meaning is formed."},
+  {id:'writing', name:'Writing',        blurb:"How language is captured in symbols and scripts."},
+  {id:'ai',      name:'AI',             blurb:"The computational side of language."},
+  {id:'misc',    name:'Misc',           blurb:"Other topics that don't fit elsewhere."},
 ];
 
 const PUZZLES = [
@@ -405,7 +405,6 @@ function actionRow(i,st,label){
   if(st!=='active') return '';
   return `<div class="ans">
     <button class="btn primary" data-check="${i}">${label||'Check'}</button>
-    <button class="link-btn" data-reveal="${i}" hidden>Show answer</button>
   </div>`;
 }
 function fbClass(st){return st==='solved'?'ok':(st==='revealed'?'shown':'');}
@@ -444,8 +443,7 @@ function itemControls(it,i,st){
       <input type="text" placeholder="Type your answer…" value="${show?esc(it.a.split('|')[0]):''}" ${st==='active'?'':'disabled'} aria-label="Answer">
       ${st==='active'?`<button class="btn primary" data-check="${i}">Check</button>`:''}
     </div>
-    ${st==='active'?`<div class="strict"><b>Spelling:</b> ${it.strict==='exact'?'exact match needed':'forgiving — typos & formatting OK'}</div>
-    <button class="link-btn" data-reveal="${i}" hidden>Show answer</button>`:''}
+    ${st==='active'?`<div class="strict"><b>Spelling:</b> ${it.strict==='exact'?'exact match needed':'forgiving — typos & formatting OK'}</div>`:''}
     ${fb}`;
 }
 
@@ -512,8 +510,6 @@ app.addEventListener('click',e=>{
     opt.parentElement.querySelectorAll('.opt').forEach(o=>o.classList.remove('sel'));
     opt.classList.add('sel'); return;
   }
-  const rev=e.target.closest('[data-reveal]');
-  if(rev) return revealAnswer(rev);
   const b=e.target.closest('[data-topic],[data-puzzle],[data-go],[data-check]');
   if(!b) return;
   if(b.dataset.topic!==undefined&&b.dataset.topic) return go('topic',b.dataset.topic);
@@ -521,7 +517,6 @@ app.addEventListener('click',e=>{
   if(b.dataset.go) return go(b.dataset.go,b.dataset.arg);
   if(b.dataset.check!==undefined) return checkAnswer(b);
 });
-function showReveal(card){const b=card.querySelector('[data-reveal]'); if(b) b.hidden=false;}
 app.addEventListener('keydown',e=>{
   if(e.key==='Enter'&&e.target.matches('.ans input')){
     e.preventDefault(); const card=e.target.closest('.qcard');
@@ -539,26 +534,22 @@ function checkAnswer(btn){
       card.querySelectorAll('.opt').forEach(o=>{o.disabled=true;o.classList.remove('sel');
         if(+o.dataset.opt===it.answer)o.classList.add('right')});
       finishItem(p,i,card,fb,btn,'✓ Correct');
-    }else{ fb.className='fb no'; fb.textContent='Not quite — try another option.'; showReveal(card); }
+    }else{ fb.className='fb no'; fb.textContent='Not quite — try another option.'; }
     return;
   }
   if(it.type==='match'){
     const sels=[...card.querySelectorAll('.msel')]; let right=0, blank=0;
     sels.forEach(s=>{
-      const r=+s.dataset.msel; const row=s.closest('.mrow');
-      if(s.value===''){blank++; row.classList.remove('mok','mno'); return;}
-      const good=(+s.value===it.answer[r]);
-      row.classList.toggle('mok',good); row.classList.toggle('mno',!good);
-      if(good)right++;
+      if(s.value===''){blank++; return;}
+      if(+s.value===it.answer[+s.dataset.msel]) right++;
     });
     if(right===it.answer.length){
-      sels.forEach(s=>s.disabled=true);
+      sels.forEach(s=>{s.disabled=true; s.closest('.mrow').classList.add('mok');});
       finishItem(p,i,card,fb,btn,'✓ Correct');
     }else{
       fb.className='fb no';
-      fb.textContent = blank ? `${right} of ${it.answer.length} matched correctly — and ${blank} still blank.`
-                             : `${right} of ${it.answer.length} matched correctly — keep going.`;
-      showReveal(card);
+      fb.textContent = blank ? `${right} of ${it.answer.length} matched so far — ${blank} still blank. Keep trying.`
+                             : `${right} of ${it.answer.length} matched. Keep trying — you'll get it.`;
     }
     return;
   }
@@ -570,29 +561,7 @@ function checkAnswer(btn){
     fb.textContent = it.strict==='exact'
       ? 'Not quite — this one needs an exact match. Check every character.'
       : 'Not quite — look again at the clues.';
-    showReveal(card);
   }
-}
-
-function revealAnswer(btn){
-  const p=PUZZLES.find(x=>x.id===view.arg); const i=+btn.dataset.reveal; const it=p.items[i];
-  const card=btn.closest('.qcard'); const fb=card.querySelector('[data-fb]');
-  if(it.type==='choice'){
-    card.querySelectorAll('.opt').forEach(o=>{o.disabled=true;o.classList.remove('sel');
-      if(+o.dataset.opt===it.answer)o.classList.add('shown');});
-  }else if(it.type==='match'){
-    card.querySelectorAll('.msel').forEach(s=>{const r=+s.dataset.msel;
-      s.value=String(it.answer[r]); s.disabled=true;
-      const row=s.closest('.mrow'); row.classList.remove('mok','mno'); row.classList.add('mshown');});
-  }else{
-    const input=card.querySelector('input'); input.value=it.a.split('|')[0]; input.disabled=true;
-  }
-  card.classList.add('revealed');
-  const chk=card.querySelector('[data-check]'); if(chk) chk.remove();
-  btn.remove();
-  fb.className='fb shown'; fb.textContent='Answer shown — no points for this one.';
-  revealed.add(p.id+'#'+i);
-  markComplete(p,card);
 }
 
 function markComplete(p,card){
