@@ -293,10 +293,9 @@ const PUZZLES = [
 
 /* ============ state ============ */
 let user = null;                 // {id, email, name, pts}
-let solved = new Set();          // puzzle ids fully solved for points
-let done = new Set();            // "puzzleid#index" answered correctly
-let revealed = new Set();        // "puzzleid#index" where the user gave up (per session)
-let pendingAuthUser = null;      // auth user awaiting a display name
+let solved = new Set();          // puzzle ids fully solved (every subpart correct)
+let done = new Set();            // "puzzleid#index" — an item fully solved
+let awarded = new Set();         // "puzzleid#subpart" — a subpart credited with points
 
 /* ============ forgiving checker (fill-in) ============ */
 function normalize(s){
@@ -325,6 +324,21 @@ function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('on');
 function count(topic){return PUZZLES.filter(p=>p.topic===topic).length}
 function solvedInTopic(topic){return PUZZLES.filter(p=>p.topic===topic&&solved.has(p.id)).length}
 const LET=k=>String.fromCharCode(65+k);
+
+/* ---- per-subpart scoring: every correct question or match-pair banks points ---- */
+const SUBPTS={Easy:5,Medium:10,Hard:15};
+function perSub(p){return SUBPTS[p.diff]||10;}
+function subCount(p){return p.items.reduce((n,it)=>n+(it.type==='match'?it.left.length:1),0);}
+function puzzleTotal(p){return perSub(p)*subCount(p);}
+function awardSub(p,subId){                 // credits one subpart once; returns points gained (0 if already earned)
+  const key=p.id+'#'+subId;
+  if(awarded.has(key)) return 0;
+  awarded.add(key);
+  const pts=perSub(p); user.pts+=pts;
+  if(sb) sb.from('solves').upsert({user_id:user.id,puzzle_id:p.id,subpart:subId,points:pts},{onConflict:'user_id,puzzle_id,subpart'})
+    .then(({error})=>{ if(error) console.warn('save subpart failed', error.message); });
+  return pts;
+}
 
 function renderAuth(){
   const slot=$('#authSlot'), pill=$('#ptsPill');
@@ -380,7 +394,7 @@ function viewTopic(id){
         <button class="prow" data-puzzle="${p.id}">
           <div class="body">
             <h3>${esc(p.title)}</h3>
-            <div class="sub">${esc((p.tags||[]).join(' · '))}${p.tags&&p.tags.length?' · ':''}${p.items.length} question${p.items.length!==1?'s':''} · ${p.points} pts</div>
+            <div class="sub">${esc((p.tags||[]).join(' · '))}${p.tags&&p.tags.length?' · ':''}${subCount(p)} part${subCount(p)!==1?'s':''} · ${puzzleTotal(p)} pts</div>
           </div>
           ${solved.has(p.id)?'<span class="solved-tick">✓ Solved</span>':''}
           <span class="chip ${p.diff.toLowerCase()}">${p.diff}</span>
@@ -408,11 +422,11 @@ function actionRow(i,st,label){
   </div>`;
 }
 function fbClass(st){return st==='solved'?'ok':(st==='revealed'?'shown':'');}
-function fbText(st){return st==='solved'?'Correct!':(st==='revealed'?'Answer shown — no points for this one.':'');}
+function fbText(st){return st==='solved'?'Correct!':'';}
 
 function itemControls(it,i,st){
-  const show = st==='solved'||st==='revealed';
-  const cls  = st==='solved'?'right':(st==='revealed'?'shown':'');
+  const show = st==='solved';
+  const cls  = 'right';
   const fb   = `<div class="fb ${fbClass(st)}" data-fb="${i}">${fbText(st)}</div>`;
   if(it.type==='choice'){
     return `<div class="opts">
@@ -424,7 +438,7 @@ function itemControls(it,i,st){
   if(it.type==='match'){
     return `<div class="match">
       <div class="mcol">
-        ${it.left.map((l,r)=>`<div class="mrow ${show?'mshown':''}" data-mrow="${r}">
+        ${it.left.map((l,r)=>`<div class="mrow ${show?'mok':''}" data-mrow="${r}">
           <span class="mnum">${r+1}</span><span class="mtext">${esc(l)}</span>
           <select class="msel" data-msel="${r}" aria-label="Match for ${esc(l)}" ${st==='active'?'':'disabled'}>
             <option value="">–</option>
@@ -448,16 +462,12 @@ function itemControls(it,i,st){
 }
 
 function itemState(p,i){
-  const key=p.id+'#'+i;
-  return done.has(key)?'solved':(revealed.has(key)?'revealed':'active');
+  return done.has(p.id+'#'+i)?'solved':'active';
 }
 function viewPuzzle(id){
   const p=PUZZLES.find(x=>x.id===id); const t=TOPICS.find(x=>x.id===p.topic);
-  const allResolved=p.items.every((_,i)=>done.has(p.id+'#'+i)||revealed.has(p.id+'#'+i));
-  const anyRevealed=p.items.some((_,i)=>revealed.has(p.id+'#'+i));
-  const banner = !allResolved ? '' :
-    (anyRevealed ? `<div class="done-banner reveal">Puzzle complete — some answers were revealed, so no points this time.</div>`
-                 : `<div class="done-banner">✓ Solved — nice deduction!</div>`);
+  const allDone=p.items.every((_,i)=>done.has(p.id+'#'+i));
+  const banner = allDone ? `<div class="done-banner">✓ Solved — every part correct!</div>` : '';
   app.innerHTML=`
     <button class="back" data-go="topic" data-arg="${p.topic}">← ${esc(t.name)}</button>
     <div class="solve">
@@ -474,7 +484,7 @@ function viewPuzzle(id){
         ${banner}
         ${p.items.map((it,i)=>{
           const st=itemState(p,i);
-          return `<div class="qcard ${st==='solved'?'correct':(st==='revealed'?'revealed':'')}" data-q="${i}">
+          return `<div class="qcard ${st==='solved'?'correct':''}" data-q="${i}">
             <div class="qtext">${i+1}. ${esc(it.q)}</div>
             ${itemControls(it,i,st)}
           </div>`}).join('')}
@@ -533,29 +543,35 @@ function checkAnswer(btn){
     if(+sel.dataset.opt===it.answer){
       card.querySelectorAll('.opt').forEach(o=>{o.disabled=true;o.classList.remove('sel');
         if(+o.dataset.opt===it.answer)o.classList.add('right')});
-      finishItem(p,i,card,fb,btn,'✓ Correct');
+      const g=awardSub(p, String(i));
+      finishItem(p,i,card,fb,btn,'✓ Correct', g);
     }else{ fb.className='fb no'; fb.textContent='Not quite — try another option.'; }
     return;
   }
   if(it.type==='match'){
-    const sels=[...card.querySelectorAll('.msel')]; let right=0, blank=0;
+    const sels=[...card.querySelectorAll('.msel')]; let right=0, blank=0, gained=0;
     sels.forEach(s=>{
       if(s.value===''){blank++; return;}
-      if(+s.value===it.answer[+s.dataset.msel]) right++;
+      const r=+s.dataset.msel;
+      if(+s.value===it.answer[r]){ right++; gained+=awardSub(p, i+':'+r); }
     });
     if(right===it.answer.length){
       sels.forEach(s=>{s.disabled=true; s.closest('.mrow').classList.add('mok');});
-      finishItem(p,i,card,fb,btn,'✓ Correct');
+      finishItem(p,i,card,fb,btn,'✓ Correct', gained);
     }else{
       fb.className='fb no';
-      fb.textContent = blank ? `${right} of ${it.answer.length} matched so far — ${blank} still blank. Keep trying.`
-                             : `${right} of ${it.answer.length} matched. Keep trying — you'll get it.`;
+      const head = blank ? `${right} of ${it.answer.length} matched so far — ${blank} still blank.`
+                         : `${right} of ${it.answer.length} matched.`;
+      fb.textContent = head + (gained ? ` +${gained} pts banked — keep going.` : ' Keep trying.');
+      if(gained){ renderAuth(); toast(`+${gained} pts`); }
     }
     return;
   }
   const input=card.querySelector('input');
   if(fillCorrect(it,input.value)){
-    input.disabled=true; finishItem(p,i,card,fb,btn,'✓');
+    input.disabled=true;
+    const g=awardSub(p, String(i));
+    finishItem(p,i,card,fb,btn,'✓', g);
   }else{
     fb.className='fb no';
     fb.textContent = it.strict==='exact'
@@ -566,26 +582,18 @@ function checkAnswer(btn){
 
 function markComplete(p,card){
   const col=card.parentElement;
-  const allResolved=p.items.every((_,k)=>done.has(p.id+'#'+k)||revealed.has(p.id+'#'+k));
-  if(!allResolved || col.querySelector('.done-banner')) return;
-  const anyRevealed=p.items.some((_,k)=>revealed.has(p.id+'#'+k));
-  if(!anyRevealed && !solved.has(p.id)){
-    solved.add(p.id); user.pts+=p.points; renderAuth();
-    toast(`+${p.points} pts — puzzle solved!`);
-    col.insertAdjacentHTML('afterbegin',`<div class="done-banner">✓ Solved — nice deduction!</div>`);
-    if(sb) sb.from('solves').upsert({user_id:user.id, puzzle_id:p.id, points:p.points}, {onConflict:'user_id,puzzle_id'})
-      .then(({error})=>{ if(error) console.warn('save solve failed', error.message); });
-  }else if(anyRevealed){
-    col.insertAdjacentHTML('afterbegin',`<div class="done-banner reveal">Puzzle complete — some answers were revealed, so no points this time.</div>`);
-  }
+  const allDone=p.items.every((_,k)=>done.has(p.id+'#'+k));
+  if(!allDone || col.querySelector('.done-banner')) return;
+  solved.add(p.id);
+  col.insertAdjacentHTML('afterbegin',`<div class="done-banner">✓ Solved — every part correct!</div>`);
 }
 
-function finishItem(p,i,card,fb,btn,label){
-  fb.className='fb ok'; fb.textContent='Correct!';
+function finishItem(p,i,card,fb,btn,label,gained){
+  fb.className='fb ok'; fb.textContent = gained ? `Correct! +${gained} pts` : 'Correct!';
   btn.disabled=true; btn.textContent=label;
-  const rev=card.querySelector('[data-reveal]'); if(rev) rev.remove();
   card.classList.add('correct');
   done.add(p.id+'#'+i);
+  if(gained){ renderAuth(); toast(`+${gained} pts`); }
   markComplete(p,card);
 }
 
@@ -657,16 +665,23 @@ async function onSignedIn(au){
   await loadProgress(au, username);
 }
 async function loadProgress(au, username){
-  const { data: rows } = await sb.from('solves').select('puzzle_id,points').eq('user_id', au.id);
-  solved.clear(); done.clear(); let pts=0;
-  (rows||[]).forEach(r=>{ solved.add(r.puzzle_id); pts+=r.points;
-    const p=PUZZLES.find(x=>x.id===r.puzzle_id); if(p) p.items.forEach((_,i)=>done.add(r.puzzle_id+'#'+i)); });
+  const { data: rows } = await sb.from('solves').select('puzzle_id,subpart,points').eq('user_id', au.id);
+  solved.clear(); done.clear(); awarded.clear(); let pts=0;
+  (rows||[]).forEach(r=>{ awarded.add(r.puzzle_id+'#'+r.subpart); pts+=r.points; });
+  PUZZLES.forEach(p=>{
+    let all = p.items.length>0;
+    p.items.forEach((it,i)=>{
+      const subs = it.type==='match' ? it.left.map((_,r)=>i+':'+r) : [String(i)];
+      if(subs.every(s=>awarded.has(p.id+'#'+s))) done.add(p.id+'#'+i); else all=false;
+    });
+    if(all) solved.add(p.id);
+  });
   user={ id:au.id, email:au.email, name:username, pts };
   closeSignin(); renderAuth(); render(); toast('Signed in');
 }
 async function signOut(){
   if(sb) await sb.auth.signOut();
-  user=null; solved.clear(); done.clear(); revealed.clear();
+  user=null; solved.clear(); done.clear(); awarded.clear();
   renderAuth(); render();
 }
 async function boot(){
@@ -678,7 +693,7 @@ async function boot(){
     if(event==='SIGNED_IN' && session && session.user){
       if(!user || user.id!==session.user.id) onSignedIn(session.user);
     }else if(event==='SIGNED_OUT'){
-      user=null; solved.clear(); done.clear(); revealed.clear(); renderAuth(); render();
+      user=null; solved.clear(); done.clear(); awarded.clear(); renderAuth(); render();
     }
   });
 }
