@@ -32,6 +32,12 @@ button{font-family:inherit;font-size:inherit;cursor:pointer}
 .brand{font-family:var(--serif);font-size:22px;font-weight:600;letter-spacing:-.01em;
   background:none;border:0;padding:0;color:var(--ink);display:flex;align-items:baseline;gap:2px}
 .brand .q{color:var(--accent)}
+.brands{display:flex;align-items:baseline;gap:9px}
+.brand-sep{color:var(--faint);font-size:17px;user-select:none}
+.brand{transition:opacity .15s}
+.brand.off{opacity:.36}
+.brand.off .q{color:var(--faint)}
+.brand.off:hover{opacity:.68}
 .nav{display:flex;gap:4px;margin-left:8px}
 .nav button{background:none;border:0;color:var(--muted);padding:7px 12px;border-radius:7px;font-weight:500}
 .nav button:hover{color:var(--ink);background:var(--surface-2)}
@@ -97,6 +103,10 @@ button.card{width:100%;font:inherit;color:inherit}
 .data{font-family:var(--mono);font-size:14.5px;line-height:1.75;background:var(--surface-2);
   border:1px solid var(--line);border-radius:10px;padding:16px 18px;
   white-space:pre;overflow-x:auto;color:var(--ink)}
+.formula{font-family:var(--serif);font-size:20px;text-align:center;padding:15px 12px;letter-spacing:.02em;
+  background:var(--surface-2);border:1px solid var(--line);border-radius:10px;color:var(--ink)}
+.qcard .pre{margin:0 0 12px}
+.qcard .pre .formula{font-size:19px}
 .note{border-left:3px solid var(--accent);background:var(--accent-soft);border-radius:0 8px 8px 0;
   padding:12px 16px;color:var(--accent-ink);font-size:14.5px}
 .tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px}
@@ -197,7 +207,11 @@ table.ptable td:first-child{font-family:var(--mono)}
 
 <header class="bar">
   <div class="bar-in">
-    <button class="brand" data-go="home" aria-label="PuzzLing home">Puzz<span class="q">Ling</span></button>
+    <div class="brands" id="brands">
+      <button class="brand" data-site="puzzling" aria-label="PuzzLing — linguistics puzzles">Puzz<span class="q">Ling</span></button>
+      <span class="brand-sep">·</span>
+      <button class="brand" data-site="training" aria-label="TrAIning — AI puzzles">Tr<span class="q">AI</span>ning</button>
+    </div>
     <nav class="nav" id="nav">
       <button data-go="home">Browse</button>
       <button data-go="board">Leaderboard</button>
@@ -236,19 +250,23 @@ const sb = (window.supabase && SUPABASE_URL.indexOf("http")===0)
   ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
 /* ============ Puzzle content (maintained by the site owner) ============ */
-const TOPICS = [
-  {id:'numbers', name:'Number systems', blurb:"How languages count."},
-  {id:'sound',   name:'Sounds',         blurb:"The phonetics, phonology, and sound changes of language."},
-  {id:'words',   name:'Morphology',     blurb:"How words are put together."},
-  {id:'order',   name:'Syntax',         blurb:"How words are arranged."},
-  {id:'meaning', name:'Semantics',      blurb:"How meaning is formed."},
-  {id:'writing', name:'Writing',        blurb:"How language is captured in symbols and scripts."},
-  {id:'ai',      name:'AI',             blurb:"The computational side of language."},
-  {id:'misc',    name:'Misc',           blurb:"Other topics that don't fit elsewhere."},
-];
-
-const PUZZLES = [
-  {id:'pie', topic:'sound', title:'The Indo-European family', diff:'Medium', points:20,
+const SITES = [
+{
+  id:'puzzling',
+  hero:{h1:"Challenge yourself with these linguistics puzzles.",
+        lede:"No background needed — just logic. Pick a topic and have fun."},
+  topics:[
+    {id:'numbers', name:'Number systems', blurb:"How languages count."},
+    {id:'sound',   name:'Sounds',         blurb:"The phonetics, phonology, and sound changes of language."},
+    {id:'words',   name:'Morphology',     blurb:"How words are put together."},
+    {id:'order',   name:'Syntax',         blurb:"How words are arranged."},
+    {id:'meaning', name:'Semantics',      blurb:"How meaning is formed."},
+    {id:'writing', name:'Writing',        blurb:"How language is captured in symbols and scripts."},
+    {id:'ai',      name:'AI',             blurb:"The computational side of language."},
+    {id:'misc',    name:'Misc',           blurb:"Other topics that don't fit elsewhere."},
+  ],
+  puzzles:[
+  {id:'pie', topic:'sound', title:'A Tale of Two Indo-European Languages', diff:'Medium', points:20,
    tags:['Real language','Multiple choice'],
    body:[
      {type:'lead', text:"Proto-Indo-European (PIE) is a language that linguists have reconstructed to be the parent language of all the Indo-European languages. English and Sanskrit are also Indo-European languages."},
@@ -289,7 +307,134 @@ const PUZZLES = [
              "light green yolk","funny human","monkey and squirrel","evil dog","blue squirrel","wolf and dog"],
       answer:[5,2,8,10,9,3,1,0,6,4,11,7]},
    ]},
+  ],
+},
+{
+  id:'training',
+  hero:{h1:"Puzzle your way through how AI actually works.",
+        lede:"From tokens to gradients to neural nets — no black boxes, just logic. Pick a topic and dig in."},
+  topics:[
+    {id:'ai-nlp',    name:'NLP',                blurb:"Natural language processing — how machines read and represent text."},
+    {id:'ai-neural', name:'Neural Networks',    blurb:"How networks compute, learn, and transform vectors."},
+    {id:'ai-ml',     name:'Machine Learning',   blurb:"Training, evaluation, and the ideas behind learning from data."},
+    {id:'ai-cv',     name:'Computer Vision',    blurb:"How machines make sense of images."},
+    {id:'ai-ethics', name:'AI Ethics & Safety', blurb:"Alignment, bias, and the impact of AI systems."},
+    {id:'ai-misc',   name:'Misc',               blurb:"Other corners of AI."},
+  ],
+  puzzles:[
+  {id:'tok', topic:'ai-nlp', title:'Use tiktoken, not tiktok', diff:'Medium', points:30,
+   tags:['Tokenization','Code','Multiple choice'],
+   body:[
+     {type:'lead', text:"Before a language model can read text, it splits the text into pieces called tokens and turns each one into an integer ID. OpenAI's tiktoken library does exactly this."},
+     {type:'text', text:"Trace through this snippet:"},
+     {type:'data', lines:[
+       'import tiktoken',
+       'encoding = tiktoken.encoding_for_model("gpt-5")',
+       'sentence = "AI is fun"',
+       'tokens = encoding.encode(sentence)',
+       'print(tokens)',
+       '',
+       '>>> [17527, 382, 2827]',
+     ]},
+   ],
+   items:[
+     {type:'choice', q:"Which of the following statements could you technically run without causing an error?",
+      options:['tokens[-1] *= 2','tokens[0] += "Hello world"','tokens[-1] = len(tokens[-1])','tokens[3] *= 2'], answer:0},
+     {type:'choice', q:"Now suppose you write:  mystery = encoding.decode([tokens[0]])  — which value does mystery represent?",
+      options:['17527','"Artificial"','2827','"AI"'], answer:3},
+     {type:'choice', q:"Which of the following best explains how a computer will understand these token indices?",
+      options:[
+        "Each digit of the index can be extracted to form a component of an embedding vector in semantic space.",
+        "The index represents a corresponding row of an embedding matrix, and that row is an embedding vector in semantic space.",
+        "The index is converted to binary, and binary is how computers understand human languages such as English.",
+        "The magnitude of the index corresponds to the connotation of a token, so a larger index means a word has a more positive connotation.",
+      ], answer:1},
+   ]},
+  {id:'grad', topic:'ai-neural', title:'Descent Expectations', diff:'Hard', points:60,
+   tags:['Gradient descent','Optimization','Multiple choice'],
+   body:[
+     {type:'lead', text:"Suppose we have a point on a multivariable function with a vector of inputs and a scalar output. To minimize the value of this function, we take the negative gradient of the function at that point, move the input along that negative gradient vector by a small magnitude (the learning rate), and repeat this process over and over again."},
+   ],
+   items:[
+     {type:'choice', q:"Which of the following components of neural networks is this gradient descent algorithm the most directly useful for?",
+      options:[
+        "Sorting out the most relevant tokens in a chatbot prompt, to figure out what to focus on in the response.",
+        "Minimizing the cost function in order to make a machine learning model more accurate.",
+        "Applying the activation function between layers of a neural network to make it more complex.",
+        "Identifying the ethical implications of a model's binary decision.",
+      ], answer:1},
+     {type:'fill', q:"Using gradient descent, compute the optimized value of f after 4 iterations with learning rate μ = 0.1, starting from (x₁, x₂) = (4, 6). Round your answer to three decimal places.",
+      pre:[{type:'formula', tex:'f(x₁, x₂) = x₁² + x₂² − x₁x₂'}],
+      a:'10.935', strict:'exact'},
+     {type:'choice', q:"Why is it important to keep a balanced learning rate μ that's not too high and not too low?",
+      options:[
+        "If μ is too low, the approximation will take a very long time to optimize since each step is more negligible, while if μ is too high, the approximation may go too far, jumping past the minimum value.",
+        "If μ is too low, the model will forget previous data and lose accuracy, while if μ is too high, the model will memorize the data too quickly and become biased, overfitting the data given.",
+        "If μ is too low, the gradient becomes zero and no learning happens, while if μ is too high, the gradient becomes infinite and the model cannot compute values.",
+        "If μ is too low, the algorithm will stop updating entirely and freeze, while if μ is too high, it will always find the exact minimum instantly but risk crashing the computer.",
+      ], answer:0},
+     {type:'choice', q:"What does the input of the cost function represent?",
+      options:[
+        "The vector of learning rates of the predictions based on how correct each one is.",
+        "The vector of the predicted probabilities and also correct answers of the outputs.",
+        "The 3D-tensor of the updated gradient descent values, compressed into a vector.",
+        "The scalar value that the model believes is the singular correct identification.",
+      ], answer:1},
+   ]},
+  {id:'nn', topic:'ai-neural', title:'Weight For It', diff:'Hard', points:60,
+   tags:['Neural networks','Code','Multiple choice'],
+   body:[
+     {type:'lead', text:"A neural network passes a vector from one layer to the next by transforming it with weights and biases, then applying a nonlinear activation function. The code below is a rough sketch of one such step."},
+     {type:'data', lines:[
+       '1   n0 = [3, 7, -4]',
+       '2   weights = [[2, -10, 5], [6, -1, 7], [-9, 13, 1]]',
+       '3   biases = [8, 0, 12]',
+       '4   n1 = []',
+       '5   for j in weights:',
+       '6       sum = 0',
+       '7       for i in range(len(n0)):',
+       '8           sum += j[i] + n0[i]',
+       '9       n1.append(sum)',
+       '10  n1_new = []',
+       '11  for k in n0:',
+       '12      if k < 0:',
+       '13          k *= 0.01',
+       '14      n1_new.append(k)',
+     ]},
+   ],
+   items:[
+     {type:'choice', q:"Which of the following components of a neural network might this code represent?",
+      options:[
+        "Moving from one layer of a neural network to the next layer, each being a vector.",
+        "Moving through the entire neural network once to find the probability of each outcome.",
+        "Updating the weights and biases using gradient descent after calculating the error.",
+        "Normalizing the input data so that all values are between 0 and 1 before processing.",
+      ], answer:0},
+     {type:'fill', q:"What does this line print?  print(n1_new)",
+      a:'[3, 7, -0.04]|3, 7, -0.04', strict:'exact'},
+     {type:'choice', q:"What would happen if a neural network never had an equivalent of lines 10–14?",
+      options:[
+        "The network would be unable to process input vectors of different sizes, because an activation function only works on a set dimension.",
+        "The activation function would cause the output of the network to always be bounded between -1 and 1.",
+        "The weights in each layer would become identical during training due to symmetry, since there's nothing to make each weight different.",
+        "The lack of a nonlinear activation function would result in the entire neural network simplifying to a single affine transformation.",
+      ], answer:3},
+     {type:'choice', q:"Which of the following is true about the transformation that brings the space that n0 is in to the space that n1 is in?",
+      options:[
+        "If n0 was multiplied by some constant k, and this transformation was applied, then the result would be n1 multiplied by k.",
+        "The origin of the space of n1 is different from the origin of the space of n0 because the transformation is not linear.",
+        "Adding a vector m0 to n0 and then applying the transformation gets the same result as first applying the transformation to m0 and adding this to n1.",
+        "The gridlines in the space of n0 would not be lines after the transformation.",
+      ], answer:1},
+   ]},
+  ],
+},
 ];
+let site='puzzling';
+function curSite(){return SITES.find(s=>s.id===site)||SITES[0];}
+function allPuzzles(){return SITES.flatMap(s=>s.puzzles);}
+function findPuzzle(id){return allPuzzles().find(p=>p.id===id);}
+function topicById(tid){return SITES.flatMap(s=>s.topics).find(t=>t.id===tid);}
 
 /* ============ state ============ */
 let user = null;                 // {id, email, name, pts}
@@ -321,8 +466,8 @@ const $=s=>document.querySelector(s);
 const app=$('#app');
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('on');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('on'),2400)}
-function count(topic){return PUZZLES.filter(p=>p.topic===topic).length}
-function solvedInTopic(topic){return PUZZLES.filter(p=>p.topic===topic&&solved.has(p.id)).length}
+function count(topic){return curSite().puzzles.filter(p=>p.topic===topic).length}
+function solvedInTopic(topic){return curSite().puzzles.filter(p=>p.topic===topic&&solved.has(p.id)).length}
 const LET=k=>String.fromCharCode(65+k);
 
 /* ---- per-subpart scoring: every correct question or match-pair banks points ---- */
@@ -352,6 +497,9 @@ function renderAuth(){
   }
 }
 function setNav(v){document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on',b.dataset.go===v))}
+function setBrands(){document.querySelectorAll('#brands .brand').forEach(b=>{
+  const on=b.dataset.site===site; b.classList.toggle('on',on); b.classList.toggle('off',!on);})}
+function switchSite(id){ if(!SITES.some(s=>s.id===id)) return; site=id; view={name:'home'}; render(); }
 
 /* ============ views ============ */
 let view={name:'home'};
@@ -359,6 +507,7 @@ function go(name,arg){view={name,arg};render()}
 
 function render(){
   renderAuth();
+  setBrands();
   setNav(view.name==='topic'?'home':view.name);
   if(view.name==='home')   return viewHome();
   if(view.name==='topic')  return viewTopic(view.arg);
@@ -367,13 +516,14 @@ function render(){
 }
 
 function viewHome(){
+  const s0=curSite();
   app.innerHTML=`
     <div class="h-hero">
-      <h1>Challenge yourself with these linguistics puzzles.</h1>
-      <p class="lede">No background needed — just logic. Pick a topic and have fun.</p>
+      <h1>${esc(s0.hero.h1)}</h1>
+      <p class="lede">${esc(s0.hero.lede)}</p>
     </div>
     <div class="grid">
-      ${TOPICS.map(t=>{const n=count(t.id),s=solvedInTopic(t.id);
+      ${s0.topics.map(t=>{const n=count(t.id),s=solvedInTopic(t.id);
         return `<button class="card" data-topic="${t.id}">
           <h3>${esc(t.name)}</h3>
           <p class="blurb">${esc(t.blurb)}</p>
@@ -384,7 +534,7 @@ function viewHome(){
 }
 
 function viewTopic(id){
-  const t=TOPICS.find(x=>x.id===id); const ps=PUZZLES.filter(p=>p.topic===id);
+  const t=topicById(id); const ps=curSite().puzzles.filter(p=>p.topic===id);
   app.innerHTML=`
     <button class="back" data-go="home">← All topics</button>
     <span class="eyebrow">${esc(t.name)}</span>
@@ -405,6 +555,7 @@ function viewTopic(id){
 function renderBody(body){
   return (body||[]).map(b=>{
     if(b.type==='data')  return `<div class="data">${b.lines.map(esc).join('\n')}</div>`;
+    if(b.type==='formula') return `<div class="formula">${esc(b.tex)}</div>`;
     if(b.type==='note')  return `<div class="note">${esc(b.text)}</div>`;
     if(b.type==='lead')  return `<p class="lead">${esc(b.text)}</p>`;
     if(b.type==='table') return `<div class="tablewrap"><table class="ptable">
@@ -465,7 +616,7 @@ function itemState(p,i){
   return done.has(p.id+'#'+i)?'solved':'active';
 }
 function viewPuzzle(id){
-  const p=PUZZLES.find(x=>x.id===id); const t=TOPICS.find(x=>x.id===p.topic);
+  const p=findPuzzle(id); const t=topicById(p.topic);
   const allDone=p.items.every((_,i)=>done.has(p.id+'#'+i));
   const banner = allDone ? `<div class="done-banner">✓ Solved — every part correct!</div>` : '';
   app.innerHTML=`
@@ -486,6 +637,7 @@ function viewPuzzle(id){
           const st=itemState(p,i);
           return `<div class="qcard ${st==='solved'?'correct':''}" data-q="${i}">
             <div class="qtext">${i+1}. ${esc(it.q)}</div>
+            ${it.pre?`<div class="pre">${renderBody(it.pre)}</div>`:''}
             ${itemControls(it,i,st)}
           </div>`}).join('')}
       </div>
@@ -534,7 +686,7 @@ app.addEventListener('keydown',e=>{
   }});
 
 function checkAnswer(btn){
-  const p=PUZZLES.find(x=>x.id===view.arg); const i=+btn.dataset.check; const it=p.items[i];
+  const p=findPuzzle(view.arg); const i=+btn.dataset.check; const it=p.items[i];
   const card=btn.closest('.qcard'); const fb=card.querySelector('[data-fb]');
   if(!user){openSignin();return}
   if(it.type==='choice'){
@@ -623,6 +775,7 @@ document.body.addEventListener('click',e=>{
 });
 scrim.addEventListener('click',e=>{if(e.target===scrim)closeSignin();});
 document.querySelector('.bar').addEventListener('click',e=>{
+  const sBtn=e.target.closest('[data-site]'); if(sBtn){switchSite(sBtn.dataset.site);return;}
   const g=e.target.closest('[data-go]'); if(g)go(g.dataset.go);});
 
 async function submitAuth(){
@@ -668,7 +821,7 @@ async function loadProgress(au, username){
   const { data: rows } = await sb.from('solves').select('puzzle_id,subpart,points').eq('user_id', au.id);
   solved.clear(); done.clear(); awarded.clear(); let pts=0;
   (rows||[]).forEach(r=>{ awarded.add(r.puzzle_id+'#'+r.subpart); pts+=r.points; });
-  PUZZLES.forEach(p=>{
+  allPuzzles().forEach(p=>{
     let all = p.items.length>0;
     p.items.forEach((it,i)=>{
       const subs = it.type==='match' ? it.left.map((_,r)=>i+':'+r) : [String(i)];
