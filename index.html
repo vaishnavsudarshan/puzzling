@@ -434,6 +434,15 @@ function curSite(){return SITES.find(s=>s.id===site)||SITES[0];}
 function allPuzzles(){return SITES.flatMap(s=>s.puzzles);}
 function findPuzzle(id){return allPuzzles().find(p=>p.id===id);}
 function topicById(tid){return SITES.flatMap(s=>s.topics).find(t=>t.id===tid);}
+const SITE_NAME={puzzling:'PuzzLing',training:'TrAIning'};
+/* points a user has earned within one site (from their own awarded subparts) */
+function sitePoints(sid){
+  const s=SITES.find(x=>x.id===sid); if(!s) return 0;
+  let t=0;
+  s.puzzles.forEach(p=>{ const pre=p.id+'#';
+    awarded.forEach(k=>{ if(k.indexOf(pre)===0) t+=perSub(p); }); });
+  return t;
+}
 
 /* ============ state ============ */
 let user = null;                 // {id, email, name, pts}
@@ -487,7 +496,7 @@ function awardSub(p,subId){                 // credits one subpart once; returns
 function renderAuth(){
   const slot=$('#authSlot'), pill=$('#ptsPill');
   if(user){
-    pill.hidden=false; $('#ptsVal').textContent=user.pts;
+    pill.hidden=false; $('#ptsVal').textContent=sitePoints(site);
     slot.innerHTML=`<span class="who"><span class="avatar">${esc(user.name[0].toUpperCase())}</span>
       <button class="btn" data-signout>Sign out</button></span>`;
   }else{
@@ -644,14 +653,17 @@ function viewPuzzle(id){
 }
 
 async function viewBoard(){
+  const s0=curSite(), sName=SITE_NAME[s0.id]||'PuzzLing';
   app.innerHTML=`
-    <span class="eyebrow">Standings</span>
-    <h1 style="font-size:28px;margin-top:6px">Leaderboard</h1>
-    <p class="lede">Every solved puzzle earns points. ${user?'':'Sign in to claim your spot.'}</p>
+    <span class="eyebrow">${esc(sName)} · Standings</span>
+    <h1 style="font-size:28px;margin-top:6px">${esc(sName)} Leaderboard</h1>
+    <p class="lede">Ranked by ${esc(s0.id==='training'?'AI':'linguistics')} points only — each section has its own board. ${user?'':'Sign in to claim your spot.'}</p>
     <div class="lb" id="lb"><div class="lb-row"><span class="nm" style="color:var(--muted);font-weight:500">Loading…</span></div></div>`;
   const lb=()=>document.getElementById('lb');
   if(!sb){ if(lb()) lb().innerHTML=`<div class="lb-row"><span class="nm" style="color:var(--muted);font-weight:500">Leaderboard is offline right now.</span></div>`; return; }
-  const { data, error } = await sb.rpc('get_leaderboard');
+  const pids=s0.puzzles.map(p=>p.id);
+  let { data, error } = await sb.rpc('get_site_board', { pids });
+  if(error){ const r=await sb.rpc('get_leaderboard'); data=r.data; error=r.error; }  // fallback: combined board until get_site_board exists
   if(!lb()) return;
   if(error){ lb().innerHTML=`<div class="lb-row"><span class="nm" style="color:var(--muted);font-weight:500">Couldn't load the leaderboard.</span></div>`; return; }
   if(!data || !data.length){ lb().innerHTML=`<div class="lb-row"><span class="nm" style="color:var(--muted);font-weight:500">No scores yet — be the first on the board!</span></div>`; return; }
