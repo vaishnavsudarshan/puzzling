@@ -573,7 +573,7 @@ function viewTopic(id){
         <button class="prow" data-puzzle="${p.id}">
           <div class="body">
             <h3>${esc(p.title)}</h3>
-            <div class="sub">${esc((p.tags||[]).join(' · '))}${p.tags&&p.tags.length?' · ':''}${subCount(p)} part${subCount(p)!==1?'s':''} · ${puzzleTotal(p)} pts</div>
+            <div class="sub">${subCount(p)} part${subCount(p)!==1?'s':''} · ${puzzleTotal(p)} pts</div>
           </div>
           ${solved.has(p.id)?'<span class="solved-tick">✓ Solved</span>':''}
           <span class="chip ${p.diff.toLowerCase()}">${p.diff}</span>
@@ -655,7 +655,6 @@ function viewPuzzle(id){
         <span class="eyebrow">${esc(t.name)}</span>
         <h2>${esc(p.title)}</h2>
         <div class="tags">
-          ${(p.tags||[]).map(tg=>`<span class="chip tag">${esc(tg)}</span>`).join('')}
           <span class="chip ${p.diff.toLowerCase()}">${p.diff}</span>
         </div>
         <div class="body-blocks">${renderBody(p.body)}</div>
