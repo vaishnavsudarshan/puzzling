@@ -241,13 +241,28 @@ table.ptable td:first-child{font-family:var(--mono)}
 
 <div class="toast" id="toast"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script>
-/* ============ Supabase config ============ */
-const SUPABASE_URL = "https://nvsdspplfetswbxnqhsa.supabase.co";
-const SUPABASE_ANON_KEY = "sb_publishable_bj5xFNHYrG8ZvlzuUlSQfQ_KkXrBILU";
-const sb = (window.supabase && SUPABASE_URL.indexOf("http")===0)
-  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+/* ============ Firebase config (public keys — safe to embed) ============ */
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyCDZ5ntGjQYyJx6gQvqEktBupr_uBMQvdY",
+  authDomain: "puzzling-316ea.firebaseapp.com",
+  projectId: "puzzling-316ea",
+  storageBucket: "puzzling-316ea.firebasestorage.app",
+  messagingSenderId: "868864684027",
+  appId: "1:868864684027:web:b5875f17433e867467655e",
+  measurementId: "G-R6V7NHELTV"
+};
+let auth=null, db=null;
+try{
+  if(window.firebase && FIREBASE_CONFIG.apiKey.indexOf("REPLACE")!==0){
+    firebase.initializeApp(FIREBASE_CONFIG);
+    auth=firebase.auth(); db=firebase.firestore();
+  }
+}catch(e){ console.warn('Firebase init failed', e && e.message); }
+const FV=()=>firebase.firestore.FieldValue;
 
 /* ============ Puzzle content (maintained by the site owner) ============ */
 const SITES = [
@@ -435,6 +450,7 @@ function allPuzzles(){return SITES.flatMap(s=>s.puzzles);}
 function findPuzzle(id){return allPuzzles().find(p=>p.id===id);}
 function topicById(tid){return SITES.flatMap(s=>s.topics).find(t=>t.id===tid);}
 const SITE_NAME={puzzling:'PuzzLing',training:'TrAIning'};
+function siteOfPuzzle(p){ const s=SITES.find(x=>x.puzzles.includes(p)); return s?s.id:'puzzling'; }
 /* points a user has earned within one site (from their own awarded subparts) */
 function sitePoints(sid){
   const s=SITES.find(x=>x.id===sid); if(!s) return 0;
@@ -488,8 +504,13 @@ function awardSub(p,subId){                 // credits one subpart once; returns
   if(awarded.has(key)) return 0;
   awarded.add(key);
   const pts=perSub(p); user.pts+=pts;
-  if(sb) sb.from('solves').upsert({user_id:user.id,puzzle_id:p.id,subpart:subId,points:pts},{onConflict:'user_id,puzzle_id,subpart'})
-    .then(({error})=>{ if(error) console.warn('save subpart failed', error.message); });
+  if(db && user){
+    const field='pts_'+siteOfPuzzle(p);
+    db.collection('profiles').doc(user.id).set(
+      { solved:{ [key]: pts }, [field]: FV().increment(pts) },
+      { merge:true }
+    ).catch(e=>console.warn('save subpart failed', e && e.message));
+  }
   return pts;
 }
 
@@ -660,10 +681,13 @@ async function viewBoard(){
     <p class="lede">Ranked by ${esc(s0.id==='training'?'AI':'linguistics')} points only — each section has its own board. ${user?'':'Sign in to claim your spot.'}</p>
     <div class="lb" id="lb"><div class="lb-row"><span class="nm" style="color:var(--muted);font-weight:500">Loading…</span></div></div>`;
   const lb=()=>document.getElementById('lb');
-  if(!sb){ if(lb()) lb().innerHTML=`<div class="lb-row"><span class="nm" style="color:var(--muted);font-weight:500">Leaderboard is offline right now.</span></div>`; return; }
-  const pids=s0.puzzles.map(p=>p.id);
-  let { data, error } = await sb.rpc('get_site_board', { pids });
-  if(error){ const r=await sb.rpc('get_leaderboard'); data=r.data; error=r.error; }  // fallback: combined board until get_site_board exists
+  if(!db){ if(lb()) lb().innerHTML=`<div class="lb-row"><span class="nm" style="color:var(--muted);font-weight:500">Leaderboard is offline right now.</span></div>`; return; }
+  const field='pts_'+s0.id;
+  let data=null, error=null;
+  try{
+    const snap=await db.collection('profiles').where(field,'>',0).orderBy(field,'desc').limit(100).get();
+    data=snap.docs.map(d=>({username:d.data().username, points:d.data()[field]}));
+  }catch(e){ error=e; }
   if(!lb()) return;
   if(error){ lb().innerHTML=`<div class="lb-row"><span class="nm" style="color:var(--muted);font-weight:500">Couldn't load the leaderboard.</span></div>`; return; }
   if(!data || !data.length){ lb().innerHTML=`<div class="lb-row"><span class="nm" style="color:var(--muted);font-weight:500">No scores yet — be the first on the board!</span></div>`; return; }
@@ -760,7 +784,7 @@ function finishItem(p,i,card,fb,btn,label,gained){
   markComplete(p,card);
 }
 
-/* ============ auth (username + password via Supabase's secure auth) ============ */
+/* ============ auth (username + password via Firebase Auth) ============ */
 const AUTH_DOMAIN='lingquest.app';   // usernames map to synthetic emails; no real mail is ever sent
 const scrim=$('#scrim');
 let authMode='login';
@@ -793,28 +817,32 @@ async function submitAuth(){
   const u=$('#uname').value.trim(), p=$('#pass').value, note=$('#authNote');
   if(!/^[A-Za-z0-9_]{2,24}$/.test(u)){note.textContent='Username: 2–24 letters, numbers, or underscores.';return;}
   if(p.length<6){note.textContent='Password must be at least 6 characters.';return;}
-  if(!sb){note.textContent='Sign-in is offline right now.';return;}
+  if(!auth){note.textContent='Sign-in is offline right now.';return;}
   $('#authGo').disabled=true;
   const email=emailFor(u);
   try{
     if(authMode==='signup'){
       note.textContent='Creating account…';
-      const { data, error } = await sb.auth.signUp({ email, password:p });
-      if(error){ note.textContent=/registered|already/i.test(error.message)
-          ?'That username is taken — try logging in instead.':error.message; return; }
-      if(data.session && data.user){
-        const { error:pe } = await sb.from('profiles').insert({ id:data.user.id, username:u });
-        if(pe && !/duplicate|unique/i.test(pe.message)) console.warn(pe.message);
-        await loadProgress(data.user, u);
-      }else{
-        note.textContent='Almost there — email confirmation is still switched on in Supabase. Turn it off (one toggle) and try again.';
+      try{
+        const cred = await auth.createUserWithEmailAndPassword(email, p);
+        await db.collection('profiles').doc(cred.user.uid).set(
+          { username:u, pts_puzzling:0, pts_training:0, solved:{} }, { merge:true });
+        await loadProgress(cred.user, u);
+      }catch(err){
+        note.textContent = err.code==='auth/email-already-in-use'
+          ? 'That username is taken — try logging in instead.'
+          : err.code==='auth/weak-password' ? 'Password must be at least 6 characters.'
+          : (err.message||'Could not create account.');
       }
     }else{
       note.textContent='Logging in…';
-      const { data, error } = await sb.auth.signInWithPassword({ email, password:p });
-      if(error){ note.textContent=/invalid|credential/i.test(error.message)
-          ?'Wrong username or password.':error.message; return; }
-      await onSignedIn(data.user);
+      try{
+        const cred = await auth.signInWithEmailAndPassword(email, p);
+        await onSignedIn(cred.user);
+      }catch(err){
+        note.textContent = /wrong-password|user-not-found|invalid-credential|invalid-login/.test(err.code||'')
+          ? 'Wrong username or password.' : (err.message||'Could not log in.');
+      }
     }
   }finally{ $('#authGo').disabled=false; }
 }
@@ -823,15 +851,22 @@ $('#uname').addEventListener('keydown',e=>{if(e.key==='Enter')$('#pass').focus()
 $('#pass').addEventListener('keydown',e=>{if(e.key==='Enter')submitAuth();});
 
 async function onSignedIn(au){
-  let { data: prof } = await sb.from('profiles').select('username').eq('id', au.id).maybeSingle();
-  let username = prof ? prof.username : au.email.split('@')[0];
-  if(!prof){ await sb.from('profiles').insert({ id:au.id, username }); }
+  let username = au.email ? au.email.split('@')[0] : 'player';
+  try{
+    const ref = db.collection('profiles').doc(au.uid);
+    const snap = await ref.get();
+    if(snap.exists && snap.data().username){ username = snap.data().username; }
+    else { await ref.set({ username, pts_puzzling:0, pts_training:0, solved:{} }, { merge:true }); }
+  }catch(e){ console.warn('profile load failed', e && e.message); }
   await loadProgress(au, username);
 }
 async function loadProgress(au, username){
-  const { data: rows } = await sb.from('solves').select('puzzle_id,subpart,points').eq('user_id', au.id);
   solved.clear(); done.clear(); awarded.clear(); let pts=0;
-  (rows||[]).forEach(r=>{ awarded.add(r.puzzle_id+'#'+r.subpart); pts+=r.points; });
+  try{
+    const snap = await db.collection('profiles').doc(au.uid).get();
+    const solvedMap = (snap.exists && snap.data().solved) || {};
+    Object.keys(solvedMap).forEach(k=>{ awarded.add(k); pts+=solvedMap[k]; });
+  }catch(e){ console.warn('progress load failed', e && e.message); }
   allPuzzles().forEach(p=>{
     let all = p.items.length>0;
     p.items.forEach((it,i)=>{
@@ -840,25 +875,20 @@ async function loadProgress(au, username){
     });
     if(all) solved.add(p.id);
   });
-  user={ id:au.id, email:au.email, name:username, pts };
+  user={ id:au.uid, email:au.email, name:username, pts };
   closeSignin(); renderAuth(); render(); toast('Signed in');
 }
 async function signOut(){
-  if(sb) await sb.auth.signOut();
+  if(auth) await auth.signOut();
   user=null; solved.clear(); done.clear(); awarded.clear();
   renderAuth(); render();
 }
 async function boot(){
   render(); setAuthMode('login');
-  if(!sb) return;
-  const { data:{ session } } = await sb.auth.getSession();
-  if(session && session.user) await onSignedIn(session.user);
-  sb.auth.onAuthStateChange((event, session)=>{
-    if(event==='SIGNED_IN' && session && session.user){
-      if(!user || user.id!==session.user.id) onSignedIn(session.user);
-    }else if(event==='SIGNED_OUT'){
-      user=null; solved.clear(); done.clear(); awarded.clear(); renderAuth(); render();
-    }
+  if(!auth) return;
+  auth.onAuthStateChanged((u)=>{
+    if(u){ if(!user || user.id!==u.uid) onSignedIn(u); }
+    else { user=null; solved.clear(); done.clear(); awarded.clear(); renderAuth(); render(); }
   });
 }
 boot();
