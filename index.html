@@ -196,6 +196,8 @@ table.ptable td:first-child{font-family:var(--mono)}
 
 .empty{color:var(--muted);background:var(--surface);border:1px dashed var(--line);
   border-radius:12px;padding:26px;text-align:center;margin-top:22px}
+.site-credit{max-width:1080px;margin:0 auto;padding:22px 20px 36px;text-align:center;
+  color:var(--faint);font-size:13px;line-height:1.6;border-top:1px solid var(--line)}
 .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);
   background:var(--ink);color:var(--bg);padding:11px 18px;border-radius:10px;font-weight:600;font-size:14px;
   opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:50}
@@ -223,6 +225,10 @@ table.ptable td:first-child{font-family:var(--mono)}
 </header>
 
 <main id="app"></main>
+
+<footer class="site-credit">
+  All puzzles are created by Vaishnav Sudarshan. Website designed &amp; built by Claude.
+</footer>
 
 <div class="scrim" id="scrim">
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="authTitle">
