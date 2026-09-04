@@ -300,6 +300,12 @@ function gCheckDeriv(input,targetStr){
   if(seq.some(n=>!G_RULES[n]))return{ok:false,msg:'Use rule numbers 1–14 only.'};
   return gDerives(gParse(targetStr),seq)?{ok:true}:{ok:false,msg:'That sequence doesn’t build this phrase. Re-check which rules you used and their order.'};
 }
+function gCheckDerivs(input,targetStrs,labels){
+  const parts=(input||'').split(';').map(s=>s.trim()).filter(Boolean);
+  if(parts.length!==targetStrs.length)return{ok:false,msg:'Give '+targetStrs.length+' derivations, separated by semicolons — one per phrase, in order.'};
+  for(let k=0;k<targetStrs.length;k++){const r=gCheckDeriv(parts[k],targetStrs[k]);if(!r.ok)return{ok:false,msg:'Phrase '+(labels?labels[k]:(k+1))+': '+r.msg};}
+  return{ok:true};
+}
 function gCheckPhrase5(input){
   if(!input||!input.trim())return{ok:false,msg:'Type a bracketed phrase with 5 terminals.'};
   const t=gParse(input);
@@ -408,15 +414,9 @@ const SITES = [
      {type:'choice', q:"Which of the following phrases is impossible?",
       options:["[Adj [Adj [Adj N]]]","[[[V Adv] Adv] Adv]","[[[[N P] [[N P] N]] P] [[N P] N]]","[V [[[Adj Adv] [N P]] N]]"],
       answer:0},
-     {type:'grammar', q:"Show that phrase B — [[[V Adv] Adv] Adv] — really is possible: list the rule numbers you apply, in order, to build it from a single starting symbol. Any valid order counts.",
-      placeholder:"rule numbers, e.g. 6 7 5", hint:"Separate the rule numbers with spaces, in the order you apply them.",
-      check:(s)=>gCheckDeriv(s,'[[[V Adv] Adv] Adv]')},
-     {type:'grammar', q:"Same for phrase C — [[[[N P] [[N P] N]] P] [[N P] N]]. List the rule numbers in the order you apply them.",
-      placeholder:"rule numbers, e.g. 6 7 5", hint:"Separate the rule numbers with spaces, in the order you apply them.",
-      check:(s)=>gCheckDeriv(s,'[[[[N P] [[N P] N]] P] [[N P] N]]')},
-     {type:'grammar', q:"Same for phrase D — [V [[[Adj Adv] [N P]] N]]. List the rule numbers in the order you apply them.",
-      placeholder:"rule numbers, e.g. 6 7 5", hint:"Separate the rule numbers with spaces, in the order you apply them.",
-      check:(s)=>gCheckDeriv(s,'[V [[[Adj Adv] [N P]] N]]')},
+     {type:'grammar', q:"Phrases B, C, and D from question 1 are all possible — show it. Give a rule-number derivation for each, separated by semicolons, in this order:  B = [[[V Adv] Adv] Adv]  ;  C = [[[[N P] [[N P] N]] P] [[N P] N]]  ;  D = [V [[[Adj Adv] [N P]] N]].  Within each derivation, list the rule numbers in the order you apply them (any valid order counts).",
+      placeholder:"B derivation ; C derivation ; D derivation", hint:"Three derivations separated by semicolons (B ; C ; D); within each, rule numbers separated by spaces.",
+      check:(s)=>gCheckDerivs(s,['[[[V Adv] Adv] Adv]','[[[[N P] [[N P] N]] P] [[N P] N]]','[V [[[Adj Adv] [N P]] N]]'],['B','C','D'])},
      {type:'grammar', q:"Give any phrase with exactly 5 units (not counting brackets) in which no unit can be decomposed any further. Write it with brackets.",
       placeholder:"a bracketed phrase with 5 terminals", hint:"Use only terminals (N, V, Adj, Adv, P); it must be a valid phrase.",
       check:(s)=>gCheckPhrase5(s)},
