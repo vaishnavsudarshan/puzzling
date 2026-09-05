@@ -181,7 +181,7 @@ function walk(dir) {
   for (const name of readdirSync(dir)) {
     const p = join(dir, name);
     if (statSync(p).isDirectory()) out.push(...walk(p));
-    else if (name.endsWith('.md')) out.push(p);
+    else if (name.endsWith('.md') && name.toLowerCase() !== 'readme.md') out.push(p);
   }
   return out;
 }
