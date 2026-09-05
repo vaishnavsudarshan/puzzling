@@ -1,0 +1,40 @@
+name: Build puzzles from markdown
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'problems/**'
+      - 'sections.json'
+      - 'scripts/build.mjs'
+      - '.github/workflows/build.yml'
+  workflow_dispatch: {}   # adds a manual "Run workflow" button in the Actions tab
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-puzzles
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Build puzzles.js
+        run: node scripts/build.mjs
+      - name: Commit if changed
+        run: |
+          git config user.name "puzzling-bot"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add puzzles.js
+          if git diff --staged --quiet; then
+            echo "puzzles.js unchanged — nothing to commit."
+          else
+            git commit -m "Rebuild puzzles.js from markdown [skip ci]"
+            git push
+          fi

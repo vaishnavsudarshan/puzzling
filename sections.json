@@ -1,0 +1,31 @@
+{
+  "puzzling": {
+    "hero": {
+      "h1": "Challenge yourself with these linguistics puzzles.",
+      "lede": "No background needed — just logic. Pick a topic and have fun."
+    },
+    "topics": [
+      { "id": "numbers", "name": "Number systems", "blurb": "How languages count." },
+      { "id": "sound",   "name": "Sounds",         "blurb": "The phonetics, phonology, and sound changes of language." },
+      { "id": "words",   "name": "Morphology",     "blurb": "How words are put together." },
+      { "id": "order",   "name": "Syntax",         "blurb": "How words are arranged." },
+      { "id": "meaning", "name": "Semantics",      "blurb": "How meaning is formed." },
+      { "id": "writing", "name": "Writing",        "blurb": "How language is captured in symbols and scripts." },
+      { "id": "ai",      "name": "Computational",  "blurb": "The computational side of language." },
+      { "id": "misc",    "name": "Misc",           "blurb": "Other topics that don't fit elsewhere." }
+    ]
+  },
+  "training": {
+    "hero": {
+      "h1": "Puzzle your way through how AI actually works.",
+      "lede": "From tokens to gradients to neural nets — no black boxes, just logic. Pick a topic and dig in."
+    },
+    "topics": [
+      { "id": "ai-nlp",    "name": "NLP",              "blurb": "Natural language processing — how machines read and represent text." },
+      { "id": "ai-neural", "name": "Neural Networks",  "blurb": "How networks compute, learn, and transform vectors." },
+      { "id": "ai-ml",     "name": "Classical ML",     "blurb": "Decision trees, regression, and clustering — the pre-neural-network toolkit." },
+      { "id": "ai-cv",     "name": "Computer Vision",  "blurb": "How machines make sense of images." },
+      { "id": "ai-misc",   "name": "Misc",             "blurb": "Other corners of AI." }
+    ]
+  }
+}
