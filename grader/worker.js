@@ -1,12 +1,13 @@
-// Cloudflare Worker — grades a student's free-response answer with Google Gemini (free tier).
-// Paste this into a new Worker in the Cloudflare dashboard, then add an encrypted
-// variable named GEMINI_KEY (your Google AI Studio key). See grader/README.md.
+// Cloudflare Worker — grades a student's free-response answer using Cloudflare Workers AI.
+// $0: runs on Cloudflare's free plan with its built-in AI. NO external API key.
+// Setup: paste into a new Worker, then add a "Workers AI" binding named exactly  AI
+// (Worker → Settings → Bindings → Add → Workers AI). See grader/README.md.
 //
-// Cost: $0. Runs on Cloudflare's free plan and Gemini's free tier. When the daily
-// free quota is hit, it returns 429 and the site falls back to "submitted for grading".
+// When the daily free AI quota is used up, run() errors and this returns 429, so the
+// site falls back to "submitted for grading". It can never cost money.
 
 const ALLOWED_ORIGINS = ["https://vaishnavs.net", "http://localhost:8788"];
-const MODEL = "gemini-2.0-flash";
+const MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"; // swap to "@cf/meta/llama-3.1-8b-instruct" if unavailable
 const CAP = 4000; // max chars per field
 
 function cors(origin) {
@@ -24,6 +25,13 @@ function json(obj, status, origin) {
     headers: { "Content-Type": "application/json", ...cors(origin) },
   });
 }
+function extractJson(text) {
+  if (!text) return null;
+  let t = String(text).replace(/```json/gi, "").replace(/```/g, "").trim();
+  const a = t.indexOf("{"), b = t.lastIndexOf("}");
+  if (a >= 0 && b > a) t = t.slice(a, b + 1);
+  try { return JSON.parse(t); } catch { return null; }
+}
 
 export default {
   async fetch(request, env) {
@@ -35,59 +43,57 @@ export default {
     let body;
     try { body = await request.json(); } catch { return json({ error: "bad json" }, 400, origin); }
 
-    const question = String(body.question || "").slice(0, CAP);
-    const rubric   = String(body.rubric   || "").slice(0, CAP);
-    const answer   = String(body.answer   || "").trim().slice(0, CAP);
+    const question  = String(body.question || "").slice(0, CAP);
+    const rubric    = String(body.rubric   || "").slice(0, CAP);
+    const answer    = String(body.answer   || "").trim().slice(0, CAP);
     const maxPoints = Math.max(1, Math.min(100, parseInt(body.maxPoints, 10) || 10));
     if (!answer) return json({ error: "empty answer" }, 400, origin);
-    if (!env.GEMINI_KEY) return json({ error: "grader not configured" }, 500, origin);
+    if (!env.AI) return json({ error: "grader not configured" }, 500, origin);
 
-    const prompt =
-`You are grading a student's answer to a problem. Follow the author's grading instructions exactly and fairly.
-
-PROBLEM:
+    const system =
+`You are a fair grader. Follow the author's grading instructions exactly. Do not reveal a full model solution.
+Respond with ONLY JSON of the form {"score": <integer 0 to ${maxPoints}>, "feedback": "<one or two sentences to the student>"}.`;
+    const user =
+`PROBLEM:
 ${question}
 
 GRADING INSTRUCTIONS (from the problem's author):
 ${rubric}
 
 STUDENT'S ANSWER:
-${answer}
+${answer}`;
 
-Give an integer score from 0 to ${maxPoints}, then one or two sentences of feedback addressed to the student ("you..."). Do not reveal a full model solution. Respond as JSON.`;
-
-    const gReq = {
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: 0.2,
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: "OBJECT",
-          properties: { score: { type: "INTEGER" }, feedback: { type: "STRING" } },
-          required: ["score", "feedback"],
-        },
-      },
-    };
-
-    let gRes;
+    let out;
     try {
-      gRes = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${env.GEMINI_KEY}`,
-        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(gReq) }
-      );
-    } catch { return json({ error: "grader_unreachable" }, 502, origin); }
+      out = await env.AI.run(MODEL, {
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: user },
+        ],
+        temperature: 0.2,
+        max_tokens: 400,
+      });
+    } catch (e) {
+      const msg = String((e && e.message) || "");
+      if (/capacity|limit|quota|429|rate/i.test(msg)) return json({ error: "quota_exceeded" }, 429, origin);
+      return json({ error: "grader_error" }, 502, origin);
+    }
 
-    if (gRes.status === 429) return json({ error: "quota_exceeded" }, 429, origin); // daily free limit
-    if (!gRes.ok) return json({ error: "grader_error", status: gRes.status }, 502, origin);
-
-    let data; try { data = await gRes.json(); } catch { return json({ error: "grader_parse" }, 502, origin); }
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-    let parsed; try { parsed = JSON.parse(text); } catch { return json({ error: "grader_parse" }, 502, origin); }
-
-    let score = Math.round(Number(parsed.score));
-    if (!Number.isFinite(score)) score = 0;
-    score = Math.max(0, Math.min(maxPoints, score));
-    const feedback = String(parsed.feedback || "").slice(0, 600);
+    const text = (out && (out.response ?? out.result ?? out.text ?? "")) || "";
+    const parsed = extractJson(text);
+    let score, feedback;
+    if (parsed && Number.isFinite(Number(parsed.score))) {
+      score = Math.round(Number(parsed.score));
+      feedback = String(parsed.feedback || "");
+    } else {
+      // best-effort fallback if the model didn't return clean JSON
+      const m = String(text).match(/(\d+)\s*(?:\/|out of)\s*\d+/i) || String(text).match(/score["\s:]+(\d+)/i);
+      if (!m) return json({ error: "grader_parse" }, 502, origin);
+      score = parseInt(m[1], 10);
+      feedback = String(text).slice(0, 600);
+    }
+    score = Math.max(0, Math.min(maxPoints, score || 0));
+    feedback = feedback.slice(0, 600);
     return json({ score, max: maxPoints, feedback }, 200, origin);
   },
 };
