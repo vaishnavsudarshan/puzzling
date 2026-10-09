@@ -538,7 +538,7 @@ function setBrands(){
 function switchSite(id){ if(!SITES.some(s=>s.id===id)) return; site=id; view={name:'home'}; render(); }
 
 /* ============ views ============ */
-let view={name:'home'};
+let view={name:'about'};   // the site opens on the About page
 function go(name,arg){view={name,arg};render()}
 
 function render(){
