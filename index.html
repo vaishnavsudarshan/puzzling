@@ -429,6 +429,7 @@ let done = new Set();            // "puzzleid#index" — an item fully solved
 let awarded = new Set();         // "puzzleid#subpart" — a subpart that is done (credited or revealed)
 let revealed = new Set();        // "puzzleid#subpart" — a one-shot MCQ answered wrong (answer shown, 0 pts)
 let earned = new Map();          // "puzzleid#subpart" -> actual points earned (supports partial AI credit)
+let attempts = new Map();        // "puzzleid#subpart" -> number of AI grading attempts used
 
 /* ============ forgiving checker (fill-in) ============ */
 function normalize(s){
@@ -478,18 +479,16 @@ function awardSub(p,subId){                 // credits one subpart once; returns
   return pts;
 }
 /* AI-graded item: banks a partial score (0..perSub) returned by the grader. */
-function awardAI(p,subId,pts){
-  const key=p.id+'#'+subId;
-  if(awarded.has(key)) return 0;
-  awarded.add(key); earned.set(key,pts); user.pts+=pts;
+/* AI items: unlimited attempts, but each attempt lowers the cap by 20% of the max (floored at 20%). */
+function ceilingFor(max,n){ return Math.max(Math.round(max*0.2), Math.round(max*(1-0.2*(n-1)))); }
+function persistAI(p,key,banked,n,delta){
   if(db && user){
     const field='pts_'+siteOfPuzzle(p);
-    const data={ solved:{ [key]: pts } };
-    if(pts) data[field]=FV().increment(pts);
+    const data={ solved:{ [key]: banked }, tries:{ [key]: n } };
+    if(delta) data[field]=FV().increment(delta);
     db.collection('profiles').doc(user.id).set(data,{merge:true})
       .catch(e=>console.warn('save ai failed', e && e.message));
   }
-  return pts;
 }
 /* MCQ is one-shot: a wrong first answer locks the item at 0 points and reveals the answer. */
 function markRevealed(p,subId){
@@ -639,16 +638,17 @@ function itemControls(it,i,st,p){
     ${fb}`;
   }
   if(it.type==='ai'){
-    const max=perSub(p);
-    let fbOut=fb;
-    if(st!=='active'){ const sc=earned.get(p.id+'#'+i)||0;
-      fbOut=`<div class="fb ${sc>=max?'ok':'shown'}" data-fb="${i}">Graded: ${sc} / ${max} pts</div>`; }
+    const key=p.id+'#'+i, max=perSub(p);
+    const n=attempts.get(key)||0, banked=earned.get(key);
+    const scoreLine = banked!==undefined
+      ? `<div class="fb ${banked>=max?'ok':'shown'}" data-fb="${i}">Best: ${banked} / ${max} pts · ${n} attempt${n===1?'':'s'}</div>`
+      : `<div class="fb" data-fb="${i}"></div>`;
     return `<div class="ans aicol">
-        <textarea class="ai-input" rows="5" placeholder="${esc(it.placeholder||'Write your answer…')}" ${st==='active'?'':'disabled'} aria-label="Answer"></textarea>
-        ${st==='active'?`<button class="btn primary" data-check="${i}">Submit for grading</button>`:''}
+        <textarea class="ai-input" rows="5" placeholder="${esc(it.placeholder||'Write your answer…')}" aria-label="Answer"></textarea>
+        <button class="btn primary" data-check="${i}">${n?'Resubmit':'Submit for grading'}</button>
       </div>
-      ${st==='active'?`<div class="strict">An AI grades this against the rubric — you get one submission.</div>`:''}
-      ${fbOut}`;
+      <div class="strict">An AI grades this and gives feedback each time. Each attempt lowers your cap — your next submission can earn at most ${ceilingFor(max,n+1)} / ${max} pts.</div>
+      ${scoreLine}`;
   }
   return `<div class="ans">
       <input type="text" placeholder="Type your answer…" value="${show?esc(it.a.split('|')[0]):''}" ${st==='active'?'':'disabled'} aria-label="Answer">
@@ -660,9 +660,9 @@ function itemControls(it,i,st,p){
 
 function itemState(p,i){
   const key=p.id+'#'+i;
+  if(p.items[i].type==='ai') return 'active';   // AI items stay resubmittable (score shown in their own fb)
   if(!done.has(key)) return 'active';
   if(revealed.has(key)) return 'revealed';
-  if(p.items[i].type==='ai' && (earned.get(key)||0) < perSub(p)) return 'revealed'; // partial AI → gold styling
   return 'solved';
 }
 function viewPuzzle(id){
@@ -805,13 +805,14 @@ function checkAnswer(btn){
 
 function markComplete(p,card){
   const col=card.parentElement;
-  const allDone=p.items.every((_,k)=>done.has(p.id+'#'+k));
-  if(!allDone || col.querySelector('.done-banner')) return;
+  if(!p.items.every((_,k)=>done.has(p.id+'#'+k))) return;
   const full=puzzleFull(p);
-  if(full) solved.add(p.id);
-  col.insertAdjacentHTML('afterbegin', full
-    ? `<div class="done-banner">✓ Solved — every part correct!</div>`
-    : `<div class="done-banner reveal">Finished — some parts aren't full marks.</div>`);
+  if(full) solved.add(p.id); else solved.delete(p.id);
+  const cls=full?'done-banner':'done-banner reveal';
+  const txt=full?'✓ Solved — every part correct!':"Finished — some parts aren't full marks.";
+  const ex=col.querySelector('.done-banner');
+  if(ex){ ex.className=cls; ex.textContent=txt; }          // update (e.g. a resubmit reaches full marks)
+  else col.insertAdjacentHTML('afterbegin',`<div class="${cls}">${txt}</div>`);
 }
 
 function finishItem(p,i,card,fb,btn,label,gained){
@@ -833,24 +834,27 @@ async function gradeAI(p,i,card,fb,btn,it){
   const ta=card.querySelector('textarea');
   const answer=(ta&&ta.value||'').trim();
   if(!answer){ fb.className='fb no'; fb.textContent='Write an answer first.'; return; }
-  const max=perSub(p), orig=btn.textContent;
+  const key=p.id+'#'+i, max=perSub(p), orig=btn.textContent;
+  const n=(attempts.get(key)||0)+1, ceiling=ceilingFor(max,n);
   btn.disabled=true; btn.textContent='Grading…'; fb.className='fb'; fb.textContent='';
   try{
     const res=await fetch(GRADER_URL,{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({question:it.q, rubric:it.grade||'', answer, maxPoints:max})});
     if(!res.ok) throw new Error('status '+res.status);
     const data=await res.json();
-    let score=Math.round(Number(data.score)); if(!Number.isFinite(score)) score=0;
-    score=Math.max(0,Math.min(max,score));
-    ta.disabled=true; btn.textContent='Submitted';
-    const g=awardAI(p,String(i),score);
-    done.add(p.id+'#'+i);
-    const full=score>=max;
-    fb.className='fb '+(full?'ok':'shown');
-    fb.textContent=`${score} / ${max} pts — ${data.feedback||''}`;
-    card.classList.add(full?'correct':'revealed');
-    if(g){ renderAuth(); toast(`+${g} pts`); }
+    let raw=Math.round(Number(data.score)); if(!Number.isFinite(raw)) raw=0; raw=Math.max(0,Math.min(max,raw));
+    const prev=earned.get(key)||0;
+    const banked=Math.max(prev, Math.min(raw, ceiling));   // keep your best; this attempt is capped by the decaying ceiling
+    const delta=banked-prev;
+    attempts.set(key,n); awarded.add(key); earned.set(key,banked); user.pts+=delta;
+    done.add(key);
+    persistAI(p,key,banked,n,delta);
+    fb.className='fb '+(banked>=max?'ok':'shown');
+    fb.textContent=`Attempt ${n}: scored ${raw}/${max} (capped at ${ceiling} this try). Best so far: ${banked}/${max}. — ${data.feedback||''}`;
+    btn.disabled=false; btn.textContent='Resubmit';
+    if(delta>0){ renderAuth(); toast(`+${delta} pts`); }
     markComplete(p,card);
+    const strict=card.querySelector('.strict'); if(strict) strict.textContent=`An AI grades this and gives feedback each time. Each attempt lowers your cap — your next submission can earn at most ${ceilingFor(max,n+1)} / ${max} pts.`;
   }catch(e){
     btn.disabled=false; btn.textContent=orig;
     fb.className='fb shown';
@@ -935,15 +939,17 @@ async function onSignedIn(au){
   await loadProgress(au, username);
 }
 async function loadProgress(au, username){
-  solved.clear(); done.clear(); awarded.clear(); revealed.clear(); earned.clear(); let pts=0;
+  solved.clear(); done.clear(); awarded.clear(); revealed.clear(); earned.clear(); attempts.clear(); let pts=0;
   try{
     const snap = await db.collection('profiles').doc(au.uid).get();
-    const solvedMap = (snap.exists && snap.data().solved) || {};
+    const d = snap.exists ? snap.data() : {};
+    const solvedMap = d.solved || {}, triesMap = d.tries || {};
     Object.keys(solvedMap).forEach(k=>{
       const v=solvedMap[k]; awarded.add(k); earned.set(k,v); pts+=v;
       const it=itemOfKey(k);
       if(it && it.type==='choice' && v===0) revealed.add(k); // a 0 on an MCQ means it was answered wrong & revealed
     });
+    Object.keys(triesMap).forEach(k=> attempts.set(k, triesMap[k]));
   }catch(e){ console.warn('progress load failed', e && e.message); }
   allPuzzles().forEach(p=>{
     let all = p.items.length>0;
@@ -958,7 +964,7 @@ async function loadProgress(au, username){
 }
 async function signOut(){
   if(auth) await auth.signOut();
-  user=null; solved.clear(); done.clear(); awarded.clear(); revealed.clear(); earned.clear();
+  user=null; solved.clear(); done.clear(); awarded.clear(); revealed.clear(); earned.clear(); attempts.clear();
   renderAuth(); render();
 }
 async function boot(){
@@ -966,7 +972,7 @@ async function boot(){
   if(!auth) return;
   auth.onAuthStateChanged((u)=>{
     if(u){ if(!user || user.id!==u.uid) onSignedIn(u); }
-    else { user=null; solved.clear(); done.clear(); awarded.clear(); revealed.clear(); earned.clear(); renderAuth(); render(); }
+    else { user=null; solved.clear(); done.clear(); awarded.clear(); revealed.clear(); earned.clear(); attempts.clear(); renderAuth(); render(); }
   });
 }
 boot();
