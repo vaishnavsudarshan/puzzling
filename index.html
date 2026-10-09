@@ -405,7 +405,7 @@ function sitePoints(sid){
   const s=SITES.find(x=>x.id===sid); if(!s) return 0;
   let t=0;
   s.puzzles.forEach(p=>{ const pre=p.id+'#';
-    awarded.forEach(k=>{ if(k.indexOf(pre)===0) t+=perSub(p); }); });
+    awarded.forEach(k=>{ if(k.indexOf(pre)===0 && !revealed.has(k)) t+=perSub(p); }); });
   return t;
 }
 
@@ -413,7 +413,8 @@ function sitePoints(sid){
 let user = null;                 // {id, email, name, pts}
 let solved = new Set();          // puzzle ids fully solved (every subpart correct)
 let done = new Set();            // "puzzleid#index" — an item fully solved
-let awarded = new Set();         // "puzzleid#subpart" — a subpart credited with points
+let awarded = new Set();         // "puzzleid#subpart" — a subpart that is done (credited or revealed)
+let revealed = new Set();        // "puzzleid#subpart" — a one-shot MCQ answered wrong (answer shown, 0 pts)
 
 /* ============ forgiving checker (fill-in) ============ */
 function normalize(s){
@@ -461,6 +462,16 @@ function awardSub(p,subId){                 // credits one subpart once; returns
     ).catch(e=>console.warn('save subpart failed', e && e.message));
   }
   return pts;
+}
+/* MCQ is one-shot: a wrong first answer locks the item at 0 points and reveals the answer. */
+function markRevealed(p,subId){
+  const key=p.id+'#'+subId;
+  if(awarded.has(key)) return;
+  awarded.add(key); revealed.add(key);
+  if(db && user){
+    db.collection('profiles').doc(user.id).set({ solved:{ [key]: 0 } }, { merge:true })
+      .catch(e=>console.warn('save reveal failed', e && e.message));
+  }
 }
 
 function renderAuth(){
@@ -551,16 +562,18 @@ function actionRow(i,st,label){
   </div>`;
 }
 function fbClass(st){return st==='solved'?'ok':(st==='revealed'?'shown':'');}
-function fbText(st){return st==='solved'?'Correct!':'';}
+function fbText(st){return st==='solved'?'Correct!':(st==='revealed'?'Answer shown — 0 pts':'');}
 
 function itemControls(it,i,st){
   const show = st==='solved';
-  const cls  = 'right';
   const fb   = `<div class="fb ${fbClass(st)}" data-fb="${i}">${fbText(st)}</div>`;
   if(it.type==='choice'){
+    const revealCorrect = st==='solved' || st==='revealed';
     return `<div class="opts">
-      ${it.options.map((o,k)=>`<button class="opt ${show&&k===it.answer?cls:''}" data-opt="${k}" ${st==='active'?'':'disabled'}>
-        <span class="optk">${LET(k)}</span><span>${esc(o)}</span></button>`).join('')}
+      ${it.options.map((o,k)=>{
+        const hl = revealCorrect && k===it.answer ? (st==='revealed'?'shown':'right') : '';
+        return `<button class="opt ${hl}" data-opt="${k}" ${st==='active'?'':'disabled'}>
+        <span class="optk">${LET(k)}</span><span>${esc(o)}</span></button>`;}).join('')}
     </div>
     ${actionRow(i,st)}${fb}`;
   }
@@ -599,12 +612,17 @@ function itemControls(it,i,st){
 }
 
 function itemState(p,i){
-  return done.has(p.id+'#'+i)?'solved':'active';
+  const key=p.id+'#'+i;
+  if(!done.has(key)) return 'active';
+  return revealed.has(key) ? 'revealed' : 'solved';
 }
 function viewPuzzle(id){
   const p=findPuzzle(id); const t=topicById(p.topic);
   const allDone=p.items.every((_,i)=>done.has(p.id+'#'+i));
-  const banner = allDone ? `<div class="done-banner">✓ Solved — every part correct!</div>` : '';
+  const anyRevealed=p.items.some((_,i)=>revealed.has(p.id+'#'+i));
+  const banner = allDone ? (anyRevealed
+    ? `<div class="done-banner reveal">Finished — but some answers were revealed.</div>`
+    : `<div class="done-banner">✓ Solved — every part correct!</div>`) : '';
   app.innerHTML=`
     <button class="back" data-go="topic" data-arg="${p.topic}">← ${esc(t.name)}</button>
     <div class="solve">
@@ -620,7 +638,7 @@ function viewPuzzle(id){
         ${banner}
         ${p.items.map((it,i)=>{
           const st=itemState(p,i);
-          return `<div class="qcard ${st==='solved'?'correct':''}" data-q="${i}">
+          return `<div class="qcard ${st==='solved'?'correct':(st==='revealed'?'revealed':'')}" data-q="${i}">
             <div class="qtext">${i+1}. ${esc(it.q)}</div>
             ${it.pre?`<div class="pre">${renderBody(it.pre)}</div>`:''}
             ${itemControls(it,i,st)}
@@ -683,12 +701,17 @@ function checkAnswer(btn){
   if(it.type==='choice'){
     const sel=card.querySelector('.opt.sel');
     if(!sel){fb.className='fb no';fb.textContent='Pick an answer first.';return}
-    if(+sel.dataset.opt===it.answer){
-      card.querySelectorAll('.opt').forEach(o=>{o.disabled=true;o.classList.remove('sel');
-        if(+o.dataset.opt===it.answer)o.classList.add('right')});
+    const correct = +sel.dataset.opt===it.answer;
+    card.querySelectorAll('.opt').forEach(o=>{o.disabled=true;o.classList.remove('sel');}); // one shot — lock either way
+    if(correct){
+      card.querySelectorAll('.opt').forEach(o=>{ if(+o.dataset.opt===it.answer)o.classList.add('right'); });
       const g=awardSub(p, String(i));
       finishItem(p,i,card,fb,btn,'✓ Correct', g);
-    }else{ fb.className='fb no'; fb.textContent='Not quite — try another option.'; }
+    }else{
+      card.querySelectorAll('.opt').forEach(o=>{ if(+o.dataset.opt===it.answer)o.classList.add('shown'); });
+      markRevealed(p, String(i));
+      finishRevealed(p,i,card,fb,btn);
+    }
     return;
   }
   if(it.type==='match'){
@@ -734,8 +757,11 @@ function markComplete(p,card){
   const col=card.parentElement;
   const allDone=p.items.every((_,k)=>done.has(p.id+'#'+k));
   if(!allDone || col.querySelector('.done-banner')) return;
-  solved.add(p.id);
-  col.insertAdjacentHTML('afterbegin',`<div class="done-banner">✓ Solved — every part correct!</div>`);
+  const anyRevealed=p.items.some((_,k)=>revealed.has(p.id+'#'+k));
+  if(!anyRevealed) solved.add(p.id);
+  col.insertAdjacentHTML('afterbegin', anyRevealed
+    ? `<div class="done-banner reveal">Finished — but some answers were revealed.</div>`
+    : `<div class="done-banner">✓ Solved — every part correct!</div>`);
 }
 
 function finishItem(p,i,card,fb,btn,label,gained){
@@ -744,6 +770,13 @@ function finishItem(p,i,card,fb,btn,label,gained){
   card.classList.add('correct');
   done.add(p.id+'#'+i);
   if(gained){ renderAuth(); toast(`+${gained} pts`); }
+  markComplete(p,card);
+}
+function finishRevealed(p,i,card,fb,btn){
+  fb.className='fb shown'; fb.textContent='Not quite — the answer is shown. 0 pts.';
+  btn.disabled=true; btn.textContent='Answer shown';
+  card.classList.remove('correct'); card.classList.add('revealed');
+  done.add(p.id+'#'+i);
   markComplete(p,card);
 }
 
@@ -824,26 +857,27 @@ async function onSignedIn(au){
   await loadProgress(au, username);
 }
 async function loadProgress(au, username){
-  solved.clear(); done.clear(); awarded.clear(); let pts=0;
+  solved.clear(); done.clear(); awarded.clear(); revealed.clear(); let pts=0;
   try{
     const snap = await db.collection('profiles').doc(au.uid).get();
     const solvedMap = (snap.exists && snap.data().solved) || {};
-    Object.keys(solvedMap).forEach(k=>{ awarded.add(k); pts+=solvedMap[k]; });
+    Object.keys(solvedMap).forEach(k=>{ awarded.add(k); pts+=solvedMap[k]; if(solvedMap[k]===0) revealed.add(k); });
   }catch(e){ console.warn('progress load failed', e && e.message); }
   allPuzzles().forEach(p=>{
-    let all = p.items.length>0;
+    let all = p.items.length>0, anyRev=false;
     p.items.forEach((it,i)=>{
       const subs = it.type==='match' ? it.left.map((_,r)=>i+':'+r) : [String(i)];
       if(subs.every(s=>awarded.has(p.id+'#'+s))) done.add(p.id+'#'+i); else all=false;
+      if(revealed.has(p.id+'#'+i)) anyRev=true;
     });
-    if(all) solved.add(p.id);
+    if(all && !anyRev) solved.add(p.id);   // a revealed (wrong MCQ) part means not fully solved
   });
   user={ id:au.uid, email:au.email, name:username, pts };
   closeSignin(); renderAuth(); render(); toast('Signed in');
 }
 async function signOut(){
   if(auth) await auth.signOut();
-  user=null; solved.clear(); done.clear(); awarded.clear();
+  user=null; solved.clear(); done.clear(); awarded.clear(); revealed.clear();
   renderAuth(); render();
 }
 async function boot(){
@@ -851,7 +885,7 @@ async function boot(){
   if(!auth) return;
   auth.onAuthStateChanged((u)=>{
     if(u){ if(!user || user.id!==u.uid) onSignedIn(u); }
-    else { user=null; solved.clear(); done.clear(); awarded.clear(); renderAuth(); render(); }
+    else { user=null; solved.clear(); done.clear(); awarded.clear(); revealed.clear(); renderAuth(); render(); }
   });
 }
 boot();
