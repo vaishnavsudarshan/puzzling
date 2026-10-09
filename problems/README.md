@@ -57,11 +57,22 @@ Markdown tables work too:
 f(x) = x^2 + 1
 ```
 == 42
+
+### This is an AI-graded (free-response / proof) question
+type: ai
+grade: |
+  Write, as if to an AI grader, how to grade the student's answer. Describe what earns full
+  credit, what earns partial credit, and what earns none. Be specific and lenient about wording.
 ```
 
 ## Notes
 
 - `id` must be unique and never change once people have solved it (scores are keyed on it).
+- **AI-graded (`type: ai`)** questions give the student a text box; their answer is scored by
+  an AI against your `grade:` rubric (0 up to the puzzle's difficulty value — Easy 5 / Med 10 /
+  Hard 15), with one submission. Good for short free-response and explanations. Avoid it for
+  anything needing *exact* formal checking (grammar derivations, precise parsing) — use the
+  deterministic types or code for those.
 - Grammar / code-graded puzzles (like "Sentence Trades") need a custom validator,
   so they live in `index.html`, not here.
 - To preview locally you don't need anything installed — just push and let the Action build it.

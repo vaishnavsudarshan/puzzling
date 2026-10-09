@@ -124,6 +124,21 @@ function parseQuestions(lines, fileLabel) {
 
 function parseItem(chunk, fileLabel) {
   const { q, rest } = chunk;
+
+  // AI-graded item: "type: ai" plus a multi-line "grade:" rubric (to the end of the question).
+  let aiType = false, gradeLines = null;
+  for (let i = 0; i < rest.length; i++) {
+    const t = rest[i].trim();
+    if (gradeLines !== null) { gradeLines.push(rest[i]); continue; }
+    const mt = t.match(/^type:\s*(\w+)/i); if (mt) { aiType = mt[1].toLowerCase() === 'ai'; continue; }
+    const mg = t.match(/^grade:\s*\|?\s*(.*)$/i); if (mg) { gradeLines = []; if (mg[1].trim()) gradeLines.push(mg[1]); continue; }
+  }
+  if (aiType) {
+    const grade = (gradeLines || []).map(l => l.replace(/^ {0,2}/, '')).join('\n').trim();
+    if (!grade) throw new Error(`${fileLabel}: AI question "${q}" needs a "grade:" rubric`);
+    return { q, type: 'ai', grade };
+  }
+
   const pre = [];
   const choices = [];
   const matches = [];

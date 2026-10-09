@@ -129,6 +129,11 @@ table.ptable td:first-child{font-family:var(--mono)}
   color:var(--ink);font-family:var(--mono);font-size:15px}
 .ans input:focus{outline:none;border-color:var(--accent)}
 .ans button{white-space:nowrap}
+.ans.aicol{flex-direction:column;align-items:stretch}
+.ai-input{width:100%;padding:11px 13px;border:1.5px solid var(--line);border-radius:9px;background:var(--bg);
+  color:var(--ink);font-family:var(--sans);font-size:14.5px;line-height:1.5;resize:vertical;min-height:88px}
+.ai-input:focus{outline:none;border-color:var(--accent)}
+.ans.aicol button{align-self:flex-start}
 .strict{font-size:12px;color:var(--faint);margin-top:9px;display:flex;align-items:center;gap:6px}
 .strict b{color:var(--muted);font-weight:600}
 .fb{margin-top:11px;font-size:14px;font-weight:600;padding:9px 12px;border-radius:8px;display:none}
@@ -272,6 +277,8 @@ try{
   }
 }catch(e){ console.warn('Firebase init failed', e && e.message); }
 const FV=()=>firebase.firestore.FieldValue;
+/* AI grader endpoint (Cloudflare Worker + Workers AI) — used by type:'ai' problems */
+const GRADER_URL="https://puzzling-grader.vaishnavs2811.workers.dev/";
 
 /* ===== Grammar engine for the "Sentence Trades" syntax puzzle (auto-grading) ===== */
 const G_NT=new Set(['S','VP','NP','AdjP','PP']);
@@ -403,11 +410,15 @@ function topicById(tid){return SITES.flatMap(s=>s.topics).find(t=>t.id===tid);}
 const SITE_NAME={puzzling:'PuzzLing',training:'TrAIning'};
 function siteOfPuzzle(p){ const s=SITES.find(x=>x.puzzles.includes(p)); return s?s.id:'puzzling'; }
 /* points a user has earned within one site (from their own awarded subparts) */
+function itemOfKey(k){ // "puzzleid#sub" -> the item object (sub may be "i" or "i:r")
+  const h=k.indexOf('#'); if(h<0) return null;
+  const p=findPuzzle(k.slice(0,h)); if(!p) return null;
+  return p.items[parseInt(k.slice(h+1),10)] || null;
+}
 function sitePoints(sid){
   const s=SITES.find(x=>x.id===sid); if(!s) return 0;
-  let t=0;
-  s.puzzles.forEach(p=>{ const pre=p.id+'#';
-    awarded.forEach(k=>{ if(k.indexOf(pre)===0 && !revealed.has(k)) t+=perSub(p); }); });
+  const ids=new Set(s.puzzles.map(p=>p.id)); let t=0;
+  earned.forEach((v,k)=>{ if(ids.has(k.slice(0,k.indexOf('#')))) t+=v; });
   return t;
 }
 
@@ -417,6 +428,7 @@ let solved = new Set();          // puzzle ids fully solved (every subpart corre
 let done = new Set();            // "puzzleid#index" — an item fully solved
 let awarded = new Set();         // "puzzleid#subpart" — a subpart that is done (credited or revealed)
 let revealed = new Set();        // "puzzleid#subpart" — a one-shot MCQ answered wrong (answer shown, 0 pts)
+let earned = new Map();          // "puzzleid#subpart" -> actual points earned (supports partial AI credit)
 
 /* ============ forgiving checker (fill-in) ============ */
 function normalize(s){
@@ -455,7 +467,7 @@ function awardSub(p,subId){                 // credits one subpart once; returns
   const key=p.id+'#'+subId;
   if(awarded.has(key)) return 0;
   awarded.add(key);
-  const pts=perSub(p); user.pts+=pts;
+  const pts=perSub(p); earned.set(key,pts); user.pts+=pts;
   if(db && user){
     const field='pts_'+siteOfPuzzle(p);
     db.collection('profiles').doc(user.id).set(
@@ -465,15 +477,36 @@ function awardSub(p,subId){                 // credits one subpart once; returns
   }
   return pts;
 }
+/* AI-graded item: banks a partial score (0..perSub) returned by the grader. */
+function awardAI(p,subId,pts){
+  const key=p.id+'#'+subId;
+  if(awarded.has(key)) return 0;
+  awarded.add(key); earned.set(key,pts); user.pts+=pts;
+  if(db && user){
+    const field='pts_'+siteOfPuzzle(p);
+    const data={ solved:{ [key]: pts } };
+    if(pts) data[field]=FV().increment(pts);
+    db.collection('profiles').doc(user.id).set(data,{merge:true})
+      .catch(e=>console.warn('save ai failed', e && e.message));
+  }
+  return pts;
+}
 /* MCQ is one-shot: a wrong first answer locks the item at 0 points and reveals the answer. */
 function markRevealed(p,subId){
   const key=p.id+'#'+subId;
   if(awarded.has(key)) return;
-  awarded.add(key); revealed.add(key);
+  awarded.add(key); revealed.add(key); earned.set(key,0);
   if(db && user){
     db.collection('profiles').doc(user.id).set({ solved:{ [key]: 0 } }, { merge:true })
       .catch(e=>console.warn('save reveal failed', e && e.message));
   }
+}
+/* true if every subpart earned full marks (no revealed MCQ, no partial AI) */
+function puzzleFull(p){
+  return p.items.every((it,i)=>{
+    const subs = it.type==='match' ? it.left.map((_,r)=>i+':'+r) : [String(i)];
+    return subs.every(s => (earned.get(p.id+'#'+s)||0) >= perSub(p));
+  });
 }
 
 function renderAuth(){
@@ -566,7 +599,7 @@ function actionRow(i,st,label){
 function fbClass(st){return st==='solved'?'ok':(st==='revealed'?'shown':'');}
 function fbText(st){return st==='solved'?'Correct!':(st==='revealed'?'Answer shown — 0 pts':'');}
 
-function itemControls(it,i,st){
+function itemControls(it,i,st,p){
   const show = st==='solved';
   const fb   = `<div class="fb ${fbClass(st)}" data-fb="${i}">${fbText(st)}</div>`;
   if(it.type==='choice'){
@@ -605,6 +638,18 @@ function itemControls(it,i,st){
     ${st==='active'&&it.hint?`<div class="strict">${esc(it.hint)}</div>`:''}
     ${fb}`;
   }
+  if(it.type==='ai'){
+    const max=perSub(p);
+    let fbOut=fb;
+    if(st!=='active'){ const sc=earned.get(p.id+'#'+i)||0;
+      fbOut=`<div class="fb ${sc>=max?'ok':'shown'}" data-fb="${i}">Graded: ${sc} / ${max} pts</div>`; }
+    return `<div class="ans aicol">
+        <textarea class="ai-input" rows="5" placeholder="${esc(it.placeholder||'Write your answer…')}" ${st==='active'?'':'disabled'} aria-label="Answer"></textarea>
+        ${st==='active'?`<button class="btn primary" data-check="${i}">Submit for grading</button>`:''}
+      </div>
+      ${st==='active'?`<div class="strict">An AI grades this against the rubric — you get one submission.</div>`:''}
+      ${fbOut}`;
+  }
   return `<div class="ans">
       <input type="text" placeholder="Type your answer…" value="${show?esc(it.a.split('|')[0]):''}" ${st==='active'?'':'disabled'} aria-label="Answer">
       ${st==='active'?`<button class="btn primary" data-check="${i}">Check</button>`:''}
@@ -616,15 +661,17 @@ function itemControls(it,i,st){
 function itemState(p,i){
   const key=p.id+'#'+i;
   if(!done.has(key)) return 'active';
-  return revealed.has(key) ? 'revealed' : 'solved';
+  if(revealed.has(key)) return 'revealed';
+  if(p.items[i].type==='ai' && (earned.get(key)||0) < perSub(p)) return 'revealed'; // partial AI → gold styling
+  return 'solved';
 }
 function viewPuzzle(id){
   const p=findPuzzle(id); const t=topicById(p.topic);
   const allDone=p.items.every((_,i)=>done.has(p.id+'#'+i));
-  const anyRevealed=p.items.some((_,i)=>revealed.has(p.id+'#'+i));
-  const banner = allDone ? (anyRevealed
-    ? `<div class="done-banner reveal">Finished — but some answers were revealed.</div>`
-    : `<div class="done-banner">✓ Solved — every part correct!</div>`) : '';
+  const full=allDone&&puzzleFull(p);
+  const banner = allDone ? (full
+    ? `<div class="done-banner">✓ Solved — every part correct!</div>`
+    : `<div class="done-banner reveal">Finished — some parts aren't full marks.</div>`) : '';
   app.innerHTML=`
     <button class="back" data-go="topic" data-arg="${p.topic}">← ${esc(t.name)}</button>
     <div class="solve">
@@ -643,7 +690,7 @@ function viewPuzzle(id){
           return `<div class="qcard ${st==='solved'?'correct':(st==='revealed'?'revealed':'')}" data-q="${i}">
             <div class="qtext">${i+1}. ${esc(it.q)}</div>
             ${it.pre?`<div class="pre">${renderBody(it.pre)}</div>`:''}
-            ${itemControls(it,i,st)}
+            ${itemControls(it,i,st,p)}
           </div>`}).join('')}
       </div>
     </div>`;
@@ -742,6 +789,7 @@ function checkAnswer(btn){
     else { fb.className='fb no'; fb.textContent=res.msg||'Not quite — check the rules.'; }
     return;
   }
+  if(it.type==='ai'){ gradeAI(p,i,card,fb,btn,it); return; }
   const input=card.querySelector('input');
   if(fillCorrect(it,input.value)){
     input.disabled=true;
@@ -759,11 +807,11 @@ function markComplete(p,card){
   const col=card.parentElement;
   const allDone=p.items.every((_,k)=>done.has(p.id+'#'+k));
   if(!allDone || col.querySelector('.done-banner')) return;
-  const anyRevealed=p.items.some((_,k)=>revealed.has(p.id+'#'+k));
-  if(!anyRevealed) solved.add(p.id);
-  col.insertAdjacentHTML('afterbegin', anyRevealed
-    ? `<div class="done-banner reveal">Finished — but some answers were revealed.</div>`
-    : `<div class="done-banner">✓ Solved — every part correct!</div>`);
+  const full=puzzleFull(p);
+  if(full) solved.add(p.id);
+  col.insertAdjacentHTML('afterbegin', full
+    ? `<div class="done-banner">✓ Solved — every part correct!</div>`
+    : `<div class="done-banner reveal">Finished — some parts aren't full marks.</div>`);
 }
 
 function finishItem(p,i,card,fb,btn,label,gained){
@@ -780,6 +828,34 @@ function finishRevealed(p,i,card,fb,btn){
   card.classList.remove('correct'); card.classList.add('revealed');
   done.add(p.id+'#'+i);
   markComplete(p,card);
+}
+async function gradeAI(p,i,card,fb,btn,it){
+  const ta=card.querySelector('textarea');
+  const answer=(ta&&ta.value||'').trim();
+  if(!answer){ fb.className='fb no'; fb.textContent='Write an answer first.'; return; }
+  const max=perSub(p), orig=btn.textContent;
+  btn.disabled=true; btn.textContent='Grading…'; fb.className='fb'; fb.textContent='';
+  try{
+    const res=await fetch(GRADER_URL,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({question:it.q, rubric:it.grade||'', answer, maxPoints:max})});
+    if(!res.ok) throw new Error('status '+res.status);
+    const data=await res.json();
+    let score=Math.round(Number(data.score)); if(!Number.isFinite(score)) score=0;
+    score=Math.max(0,Math.min(max,score));
+    ta.disabled=true; btn.textContent='Submitted';
+    const g=awardAI(p,String(i),score);
+    done.add(p.id+'#'+i);
+    const full=score>=max;
+    fb.className='fb '+(full?'ok':'shown');
+    fb.textContent=`${score} / ${max} pts — ${data.feedback||''}`;
+    card.classList.add(full?'correct':'revealed');
+    if(g){ renderAuth(); toast(`+${g} pts`); }
+    markComplete(p,card);
+  }catch(e){
+    btn.disabled=false; btn.textContent=orig;
+    fb.className='fb shown';
+    fb.textContent='The grader is busy right now (it may have hit today’s free limit). Your answer isn’t lost — try again in a bit.';
+  }
 }
 
 /* ============ auth (username + password via Firebase Auth) ============ */
@@ -859,27 +935,30 @@ async function onSignedIn(au){
   await loadProgress(au, username);
 }
 async function loadProgress(au, username){
-  solved.clear(); done.clear(); awarded.clear(); revealed.clear(); let pts=0;
+  solved.clear(); done.clear(); awarded.clear(); revealed.clear(); earned.clear(); let pts=0;
   try{
     const snap = await db.collection('profiles').doc(au.uid).get();
     const solvedMap = (snap.exists && snap.data().solved) || {};
-    Object.keys(solvedMap).forEach(k=>{ awarded.add(k); pts+=solvedMap[k]; if(solvedMap[k]===0) revealed.add(k); });
+    Object.keys(solvedMap).forEach(k=>{
+      const v=solvedMap[k]; awarded.add(k); earned.set(k,v); pts+=v;
+      const it=itemOfKey(k);
+      if(it && it.type==='choice' && v===0) revealed.add(k); // a 0 on an MCQ means it was answered wrong & revealed
+    });
   }catch(e){ console.warn('progress load failed', e && e.message); }
   allPuzzles().forEach(p=>{
-    let all = p.items.length>0, anyRev=false;
+    let all = p.items.length>0;
     p.items.forEach((it,i)=>{
       const subs = it.type==='match' ? it.left.map((_,r)=>i+':'+r) : [String(i)];
       if(subs.every(s=>awarded.has(p.id+'#'+s))) done.add(p.id+'#'+i); else all=false;
-      if(revealed.has(p.id+'#'+i)) anyRev=true;
     });
-    if(all && !anyRev) solved.add(p.id);   // a revealed (wrong MCQ) part means not fully solved
+    if(all && puzzleFull(p)) solved.add(p.id);   // all parts at full marks
   });
   user={ id:au.uid, email:au.email, name:username, pts };
   closeSignin(); renderAuth(); render(); toast('Signed in');
 }
 async function signOut(){
   if(auth) await auth.signOut();
-  user=null; solved.clear(); done.clear(); awarded.clear(); revealed.clear();
+  user=null; solved.clear(); done.clear(); awarded.clear(); revealed.clear(); earned.clear();
   renderAuth(); render();
 }
 async function boot(){
@@ -887,7 +966,7 @@ async function boot(){
   if(!auth) return;
   auth.onAuthStateChanged((u)=>{
     if(u){ if(!user || user.id!==u.uid) onSignedIn(u); }
-    else { user=null; solved.clear(); done.clear(); awarded.clear(); revealed.clear(); renderAuth(); render(); }
+    else { user=null; solved.clear(); done.clear(); awarded.clear(); revealed.clear(); earned.clear(); renderAuth(); render(); }
   });
 }
 boot();
