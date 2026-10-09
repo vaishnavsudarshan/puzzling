@@ -79,7 +79,12 @@ ${answer}`;
       return json({ error: "grader_error" }, 502, origin);
     }
 
-    const text = (out && (out.response ?? out.result ?? out.text ?? "")) || "";
+    // Workers AI returns either { response: "..." } or an OpenAI-style { choices:[{message:{content}}] }.
+    const text =
+      (out?.choices?.[0]?.message?.content) ||
+      (typeof out?.response === "string" ? out.response : "") ||
+      (typeof out?.result === "string" ? out.result : "") ||
+      (typeof out?.text === "string" ? out.text : "") || "";
     const parsed = extractJson(text);
     let score, feedback;
     if (parsed && Number.isFinite(Number(parsed.score))) {
@@ -88,10 +93,7 @@ ${answer}`;
     } else {
       // best-effort fallback if the model didn't return clean JSON
       const m = String(text).match(/(\d+)\s*(?:\/|out of)\s*\d+/i) || String(text).match(/score["\s:]+(\d+)/i);
-      if (!m) return json({ error: "grader_parse",
-        _shape: (out && typeof out === "object") ? Object.keys(out) : typeof out,
-        _text: String(text).slice(0, 500),
-        _out: JSON.stringify(out).slice(0, 500) }, 502, origin);
+      if (!m) return json({ error: "grader_parse" }, 502, origin);
       score = parseInt(m[1], 10);
       feedback = String(text).slice(0, 600);
     }
