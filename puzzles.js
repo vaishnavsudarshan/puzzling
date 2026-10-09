@@ -244,10 +244,6 @@ window.PUZZLE_DATA = {
         "body": [
           {
             "type": "lead",
-            "text": "## Intro"
-          },
-          {
-            "type": "text",
             "text": "A natural language is productive if a finite amount of phonemes can generate an infinite amount of sentences. Productivity, by the way, is a criterion that must be satisfied in order to even be a language, according to most linguists."
           },
           {
