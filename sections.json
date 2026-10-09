@@ -18,7 +18,7 @@
   "training": {
     "hero": {
       "h1": "Puzzle your way through how AI actually works.",
-      "lede": "From tokens to gradients to neural nets — no black boxes, just logic. Pick a topic and dig in."
+      "lede": "Extensive background isn't required, but most problems rely on some prior knowledge."
     },
     "topics": [
       { "id": "ai-nlp",    "name": "NLP",              "blurb": "Natural language processing — how machines read and represent text." },

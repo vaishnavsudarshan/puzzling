@@ -34,6 +34,17 @@ button{font-family:inherit;font-size:inherit;cursor:pointer}
 .brand .q{color:var(--accent)}
 .brands{display:flex;align-items:baseline;gap:9px}
 .brand-sep{color:var(--faint);font-size:17px;user-select:none}
+.about-tab{background:none;border:0;color:var(--muted);font-weight:600;font-size:14px;padding:6px 9px;border-radius:7px;align-self:center;font-family:var(--sans)}
+.about-tab:hover{color:var(--ink);background:var(--surface-2)}
+.about-tab.on{color:var(--accent-ink);background:var(--accent-soft)}
+.about-wrap{max-width:620px}
+.about-wrap p{color:var(--muted)}
+.about-card{background:var(--surface);border:1px solid var(--line);border-radius:13px;padding:18px 22px;margin-top:24px}
+.about-card .mref-title{margin-bottom:10px}
+.about-card .arow{display:flex;gap:12px;padding:7px 0;font-size:15px;align-items:baseline}
+.about-card .arow .k{color:var(--faint);min-width:72px;font-size:13px;letter-spacing:.03em;text-transform:uppercase;font-weight:700}
+.about-card a{color:var(--accent-ink);text-decoration:none}
+.about-card a:hover{text-decoration:underline}
 .brand{transition:opacity .15s}
 .brand.off{opacity:.36}
 .brand.off .q{color:var(--faint)}
@@ -220,6 +231,8 @@ table.ptable td:first-child{font-family:var(--mono)}
       <button class="brand" data-site="puzzling" aria-label="PuzzLing — linguistics puzzles">Puzz<span class="q">Ling</span></button>
       <span class="brand-sep">·</span>
       <button class="brand" data-site="training" aria-label="TrAIning — AI puzzles">Tr<span class="q">AI</span>ning</button>
+      <span class="brand-sep">·</span>
+      <button class="about-tab" id="aboutTab" data-go="about">About</button>
     </div>
     <nav class="nav" id="nav">
       <button data-go="home">Browse</button>
@@ -232,10 +245,6 @@ table.ptable td:first-child{font-family:var(--mono)}
 </header>
 
 <main id="app"></main>
-
-<footer class="site-credit">
-  All problems are written fully by <a href="https://vaishnavs.net" target="_blank" rel="noopener">Vaishnav Sudarshan</a>. The site was designed and built using Claude.
-</footer>
 
 <div class="scrim" id="scrim">
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="authTitle">
@@ -520,8 +529,12 @@ function renderAuth(){
   }
 }
 function setNav(v){document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on',b.dataset.go===v))}
-function setBrands(){document.querySelectorAll('#brands .brand').forEach(b=>{
-  const on=b.dataset.site===site; b.classList.toggle('on',on); b.classList.toggle('off',!on);})}
+function setBrands(){
+  const onAbout = view.name==='about';
+  document.querySelectorAll('#brands .brand').forEach(b=>{
+    const on=!onAbout && b.dataset.site===site; b.classList.toggle('on',on); b.classList.toggle('off',!on);});
+  const ab=document.getElementById('aboutTab'); if(ab) ab.classList.toggle('on',onAbout);
+}
 function switchSite(id){ if(!SITES.some(s=>s.id===id)) return; site=id; view={name:'home'}; render(); }
 
 /* ============ views ============ */
@@ -532,10 +545,26 @@ function render(){
   renderAuth();
   setBrands();
   setNav(view.name==='topic'?'home':view.name);
+  if(view.name==='about')  return viewAbout();
   if(view.name==='home')   return viewHome();
   if(view.name==='topic')  return viewTopic(view.arg);
   if(view.name==='puzzle') return viewPuzzle(view.arg);
   if(view.name==='board')  return viewBoard();
+}
+
+function viewAbout(){
+  app.innerHTML=`
+    <div class="about-wrap">
+      <span class="eyebrow">About</span>
+      <h1 style="font-size:28px;margin-top:6px">PuzzLing &amp; TrAIning</h1>
+      <p class="lede">This is a website to solve fun problems in AI and linguistics (TrAIning and PuzzLing, respectively). Linguistics problems shouldn't require prior knowledge, while AI problems may require some basic experience. Problems are created by Vaishnav Sudarshan.</p>
+      <div class="about-card">
+        <div class="mref-title">Contact</div>
+        <div class="arow"><span class="k">Email</span><a href="mailto:vaishnavs2811@gmail.com">vaishnavs2811@gmail.com</a></div>
+        <div class="arow"><span class="k">Phone</span><a href="tel:+14257851306">425-785-1306</a></div>
+        <div class="arow"><span class="k">Website</span><a href="https://vaishnavs.net" target="_blank" rel="noopener">vaishnavs.net</a></div>
+      </div>
+    </div>`;
 }
 
 function viewHome(){
