@@ -2,12 +2,15 @@
 id: pd
 title: "This problem will make you more productive"
 section: puzzling
+topic: order
 difficulty: easy
 ---
 
 ## Intro
 
 A natural language is productive if a finite amount of phonemes can generate an infinite amount of sentences. Productivity, by the way, is a criterion that must be satisfied in order to even be a language, according to most linguists. 
+
+## Questions
 
 ### Show that English is productive. 
 type: ai
