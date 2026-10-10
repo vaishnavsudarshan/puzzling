@@ -548,7 +548,7 @@ function renderAuth(){
       <button class="btn" data-signout>Sign out</button></span>`;
   }else{
     pill.hidden=true;
-    slot.innerHTML=`<button class="btn primary" data-signin>Sign in</button>`;
+    slot.innerHTML=`<button class="btn primary" data-signin>Log in / Sign up</button>`;
   }
 }
 function setNav(v){document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on',b.dataset.go===v))}
