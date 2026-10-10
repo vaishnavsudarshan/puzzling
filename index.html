@@ -46,8 +46,9 @@ button{font-family:inherit;font-size:inherit;cursor:pointer}
 .about-card a{color:var(--accent-ink);text-decoration:none}
 .about-card a:hover{text-decoration:underline}
 .contact-foot{max-width:1080px;margin:0 auto;padding:20px;border-top:1px solid var(--line);
-  display:flex;gap:10px;justify-content:center;flex-wrap:wrap;align-items:center;font-size:13.5px;color:var(--muted)}
-.contact-foot .k{color:var(--faint);font-weight:700;font-size:12px;letter-spacing:.06em;text-transform:uppercase}
+  display:flex;flex-direction:column;gap:7px;align-items:center;font-size:13.5px;color:var(--muted)}
+.contact-foot .cfrow{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;align-items:center}
+.contact-foot .k{color:var(--faint);font-weight:700;font-size:12px;letter-spacing:.06em;text-transform:uppercase;min-width:66px;text-align:right}
 .contact-foot .dot{color:var(--faint)}
 .contact-foot a{color:var(--accent-ink);text-decoration:none}
 .contact-foot a:hover{text-decoration:underline}
@@ -253,12 +254,16 @@ table.ptable td:first-child{font-family:var(--mono)}
 <main id="app"></main>
 
 <footer class="contact-foot">
-  <span class="k">Contact</span>
-  <a href="mailto:vaishnavs2811@gmail.com">vaishnavs2811@gmail.com</a>
-  <span class="dot">·</span>
-  <a href="tel:+14257851306">425-785-1306</a>
-  <span class="dot">·</span>
-  <a href="https://vaishnavs.net" target="_blank" rel="noopener">vaishnavs.net</a>
+  <div class="cfrow">
+    <span class="k">Contact</span>
+    <a href="mailto:vaishnavs2811@gmail.com">vaishnavs2811@gmail.com</a>
+    <span class="dot">·</span>
+    <a href="tel:+14257851306">425-785-1306</a>
+  </div>
+  <div class="cfrow">
+    <span class="k">Website</span>
+    <a href="https://vaishnavs.net" target="_blank" rel="noopener">vaishnavs.net</a>
+  </div>
 </footer>
 
 <div class="scrim" id="scrim">
