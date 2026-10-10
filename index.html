@@ -28,7 +28,8 @@ button{font-family:inherit;font-size:inherit;cursor:pointer}
 
 .bar{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 88%,transparent);
   backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
-.bar-in{max-width:1080px;margin:0 auto;padding:12px 20px;display:flex;align-items:center;gap:20px}
+.bar-in{max-width:1080px;margin:0 auto;padding:12px 20px 9px;display:flex;align-items:center;gap:20px}
+.bar-sub{max-width:1080px;margin:0 auto;padding:0 20px 10px}
 .brand{font-family:var(--serif);font-size:22px;font-weight:600;letter-spacing:-.01em;
   background:none;border:0;padding:0;color:var(--ink);display:flex;align-items:baseline;gap:2px}
 .brand .q{color:var(--accent)}
@@ -56,7 +57,7 @@ button{font-family:inherit;font-size:inherit;cursor:pointer}
 .brand.off{opacity:.36}
 .brand.off .q{color:var(--faint)}
 .brand.off:hover{opacity:.68}
-.nav{display:flex;gap:4px;margin-left:8px}
+.nav{display:flex;gap:4px}
 .nav button{background:none;border:0;color:var(--muted);padding:7px 12px;border-radius:7px;font-weight:500}
 .nav button:hover{color:var(--ink);background:var(--surface-2)}
 .nav button.on{color:var(--accent-ink);background:var(--accent-soft)}
@@ -241,13 +242,15 @@ table.ptable td:first-child{font-family:var(--mono)}
       <span class="brand-sep">·</span>
       <button class="about-tab" id="aboutTab" data-go="about">About</button>
     </div>
+    <span class="spacer"></span>
+    <span class="pts" id="ptsPill" hidden><span class="dot"></span><span id="ptsVal">0</span> pts</span>
+    <span id="authSlot"></span>
+  </div>
+  <div class="bar-sub">
     <nav class="nav" id="nav">
       <button data-go="home">Browse</button>
       <button data-go="board">Leaderboard</button>
     </nav>
-    <span class="spacer"></span>
-    <span class="pts" id="ptsPill" hidden><span class="dot"></span><span id="ptsVal">0</span> pts</span>
-    <span id="authSlot"></span>
   </div>
 </header>
 
