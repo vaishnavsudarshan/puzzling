@@ -45,6 +45,12 @@ button{font-family:inherit;font-size:inherit;cursor:pointer}
 .about-card .arow .k{color:var(--faint);min-width:72px;font-size:13px;letter-spacing:.03em;text-transform:uppercase;font-weight:700}
 .about-card a{color:var(--accent-ink);text-decoration:none}
 .about-card a:hover{text-decoration:underline}
+.contact-foot{max-width:1080px;margin:0 auto;padding:20px;border-top:1px solid var(--line);
+  display:flex;gap:10px;justify-content:center;flex-wrap:wrap;align-items:center;font-size:13.5px;color:var(--muted)}
+.contact-foot .k{color:var(--faint);font-weight:700;font-size:12px;letter-spacing:.06em;text-transform:uppercase}
+.contact-foot .dot{color:var(--faint)}
+.contact-foot a{color:var(--accent-ink);text-decoration:none}
+.contact-foot a:hover{text-decoration:underline}
 .brand{transition:opacity .15s}
 .brand.off{opacity:.36}
 .brand.off .q{color:var(--faint)}
@@ -245,6 +251,15 @@ table.ptable td:first-child{font-family:var(--mono)}
 </header>
 
 <main id="app"></main>
+
+<footer class="contact-foot">
+  <span class="k">Contact</span>
+  <a href="mailto:vaishnavs2811@gmail.com">vaishnavs2811@gmail.com</a>
+  <span class="dot">·</span>
+  <a href="tel:+14257851306">425-785-1306</a>
+  <span class="dot">·</span>
+  <a href="https://vaishnavs.net" target="_blank" rel="noopener">vaishnavs.net</a>
+</footer>
 
 <div class="scrim" id="scrim">
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="authTitle">
@@ -558,12 +573,6 @@ function viewAbout(){
       <span class="eyebrow">About</span>
       <h1 style="font-size:28px;margin-top:6px">Puzz<span class="q">Ling</span></h1>
       <p class="lede">This is a website to solve fun problems in AI and Linguistics. The AI counterpart to PuzzLing is called TrAIning. Linguistics problems shouldn't require prior knowledge, while AI problems may require some basic experience. Problems are created by Vaishnav Sudarshan.</p>
-      <div class="about-card">
-        <div class="mref-title">Contact</div>
-        <div class="arow"><span class="k">Email</span><a href="mailto:vaishnavs2811@gmail.com">vaishnavs2811@gmail.com</a></div>
-        <div class="arow"><span class="k">Phone</span><a href="tel:+14257851306">425-785-1306</a></div>
-        <div class="arow"><span class="k">Website</span><a href="https://vaishnavs.net" target="_blank" rel="noopener">vaishnavs.net</a></div>
-      </div>
     </div>`;
 }
 
